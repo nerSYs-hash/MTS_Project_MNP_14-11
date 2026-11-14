@@ -1,0 +1,1133 @@
+@import "tailwindcss";
+
+/* -------------------------------------------------------------
+   Фирменные шрифты МТС (MTS Brand Typefaces)
+   ------------------------------------------------------------- */
+
+/* MTS Text */
+@font-face {
+  font-family: 'MTS Text';
+  src: url('/fonts/MTSText-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Text';
+  src: url('/fonts/MTSText-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Text';
+  src: url('/fonts/MTSText-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Text';
+  src: url('/fonts/MTSText-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* MTS Compact (для плотных интерфейсных элементов, таймеров, бейджей, цифр) */
+@font-face {
+  font-family: 'MTS Compact';
+  src: url('/fonts/MTSCompact-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Compact';
+  src: url('/fonts/MTSCompact-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Compact';
+  src: url('/fonts/MTSCompact-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Compact';
+  src: url('/fonts/MTSCompact-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* MTS Extended (для заголовков, логотипов, акцентов бренда) */
+@font-face {
+  font-family: 'MTS Extended';
+  src: url('/fonts/MTSExtended-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Extended';
+  src: url('/fonts/MTSExtended-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Extended';
+  src: url('/fonts/MTSExtended-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Extended';
+  src: url('/fonts/MTSExtended-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* MTS Wide */
+@font-face {
+  font-family: 'MTS Wide';
+  src: url('/fonts/MTSWide-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Wide';
+  src: url('/fonts/MTSWide-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Wide';
+  src: url('/fonts/MTSWide-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Wide';
+  src: url('/fonts/MTSWide-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS Wide';
+  src: url('/fonts/MTSWide-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* MTS UltraExtended */
+@font-face {
+  font-family: 'MTS UltraExtended';
+  src: url('/fonts/MTSUltraExtended-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS UltraExtended';
+  src: url('/fonts/MTSUltraExtended-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS UltraExtended';
+  src: url('/fonts/MTSUltraExtended-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MTS UltraExtended';
+  src: url('/fonts/MTSUltraExtended-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'MTS Text', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mts: 'MTS Text', 'Manrope', sans-serif;
+  --font-mts-compact: 'MTS Compact', 'MTS Text', sans-serif;
+  --font-mts-extended: 'MTS Extended', 'MTS Text', sans-serif;
+  --font-mts-wide: 'MTS Wide', 'MTS Text', sans-serif;
+  --font-mts-ultra: 'MTS UltraExtended', 'MTS Extended', sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: 'MTS Text', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #F4F5F7;
+    color: #1D2023;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button, input, select, textarea {
+    font-family: inherit;
+  }
+
+  /* Скрыть стрелочки (spin arrows) на полях ввода чисел во всех браузерах */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+/* Вспомогательные классы гарнитур МТС */
+.font-mts-text {
+  font-family: 'MTS Text', 'Manrope', sans-serif;
+}
+
+.font-mts-compact {
+  font-family: 'MTS Compact', 'MTS Text', sans-serif;
+}
+
+.font-mts-extended {
+  font-family: 'MTS Extended', 'MTS Text', sans-serif;
+}
+
+.font-mts-wide {
+  font-family: 'MTS Wide', 'MTS Text', sans-serif;
+}
+
+.font-mts-ultra {
+  font-family: 'MTS UltraExtended', 'MTS Extended', sans-serif;
+}
+
+.shadow-mts-card {
+  box-shadow: 0 4px 16px -2px rgba(29, 32, 35, 0.05), 0 2px 6px -1px rgba(29, 32, 35, 0.03);
+}
+
+.shadow-mts-hover {
+  box-shadow: 0 10px 25px -4px rgba(29, 32, 35, 0.08), 0 4px 10px -2px rgba(29, 32, 35, 0.04);
+}
+
+/* Мягкая, ненавязчивая естественная тень (еле заметная, плавно смещающаяся без широких ореолов) */
+@keyframes natural-ambient-cast-shadow {
+  0% {
+    box-shadow: 0 3px 10px 0 rgba(217, 119, 6, 0.10), 0 1px 4px 0 rgba(29, 32, 35, 0.04);
+  }
+  25% {
+    box-shadow: 2px 4px 12px 0 rgba(217, 119, 6, 0.12), 1px 2px 5px 0 rgba(29, 32, 35, 0.04);
+  }
+  50% {
+    box-shadow: 0 5px 14px 0 rgba(217, 119, 6, 0.13), 0 2px 5px 0 rgba(29, 32, 35, 0.05);
+  }
+  75% {
+    box-shadow: -2px 4px 12px 0 rgba(217, 119, 6, 0.12), -1px 2px 5px 0 rgba(29, 32, 35, 0.04);
+  }
+  100% {
+    box-shadow: 0 3px 10px 0 rgba(217, 119, 6, 0.10), 0 1px 4px 0 rgba(29, 32, 35, 0.04);
+  }
+}
+
+.animate-cast-shadow {
+  animation: natural-ambient-cast-shadow 5.5s ease-in-out infinite;
+}
+
+/* Легкий акцентный всплеск при добавлении значения */
+@keyframes pulseValueBounce {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-value-pop {
+  animation: pulseValueBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Плавная анимация зеленой стрелки на кнопке пуш-уведомления (движение вперед-назад) */
+@keyframes arrowPingPong {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+.animate-arrow-pingpong {
+  animation: arrowPingPong 1.1s ease-in-out infinite;
+}
+
+/* Эффект вязких жидких капель (Metaball Gooey Filter) */
+.gooey-droplet-stage {
+  filter: url(#mts-gooey-drop);
+}
+
+@keyframes dropletSurfaceWobble {
+  0% {
+    transform: scale(0.4, 0.4);
+  }
+  35% {
+    transform: scale(1.28, 0.76);
+  }
+  65% {
+    transform: scale(0.88, 1.14);
+  }
+  85% {
+    transform: scale(1.05, 0.96);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+.animate-droplet-wobble {
+  animation: dropletSurfaceWobble 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* 3D Шарообразный объём и жемчужно-перламутровое переливание главного «лизуна» */
+@keyframes pearlIridescenceShift {
+  0% {
+    background-position: 0% 50%, 0% 0%, 50% 50%;
+  }
+  50% {
+    background-position: 100% 50%, 100% 100%, 50% 50%;
+  }
+  100% {
+    background-position: 0% 50%, 0% 0%, 50% 50%;
+  }
+}
+
+.pearl-slime-sphere {
+  background-color: #ffffff;
+  background-image:
+    /* 1. Мягкий солнечный блик на вершине шара */
+    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.55) 24%, rgba(255, 255, 255, 0) 54%),
+    /* 2. Переливающийся перламутровый слой (розовый жемчуг, ледяной аквамарин, лаванда и тёплый шампань) */
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(255, 226, 240, 0.65) 22%,
+      rgba(220, 244, 255, 0.7) 45%,
+      rgba(238, 226, 255, 0.65) 68%,
+      rgba(255, 246, 228, 0.65) 85%,
+      rgba(255, 255, 255, 0.95) 100%
+    ),
+    /* 3. Базовый сферический градиент для 3D-объёма шара */
+    radial-gradient(circle at 34% 30%, #ffffff 0%, #f8fafd 48%, #e9eef6 82%, #dde5f0 100%);
+  background-size: 100% 100%, 240% 240%, 100% 100%;
+  animation: pearlIridescenceShift 7s ease-in-out infinite;
+  box-shadow:
+    /* Внутренний яркий блик сверху-слева */
+    inset 5px 6px 12px rgba(255, 255, 255, 0.98),
+    /* Внутренний перламутровый рефлекс снизу-справа (создаёт шарообразность) */
+    inset -6px -8px 16px rgba(188, 202, 224, 0.62),
+    /* Тонкое радужное свечение у самой кромки жемчужины */
+    inset 2px -3px 10px rgba(244, 214, 235, 0.45),
+    inset -2px 3px 10px rgba(210, 238, 255, 0.45),
+    /* Внешняя мягкая тень объёмного шара */
+    0 8px 22px -4px rgba(29, 32, 35, 0.14),
+    0 3px 8px -2px rgba(29, 32, 35, 0.07);
+}
+
+/* Дополнительный глянцевый полумесяц-блик на сферической поверхности жемчужины */
+.pearl-slime-sphere::before {
+  content: '';
+  position: absolute;
+  top: 11%;
+  left: 15%;
+  width: 42%;
+  height: 26%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.35) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(-28deg);
+  pointer-events: none;
+}
+
+/* Нижний мягкий жемчужный рефлекс от подложки */
+.pearl-slime-sphere::after {
+  content: '';
+  position: absolute;
+  bottom: 8%;
+  right: 14%;
+  width: 48%;
+  height: 20%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.65) 0%,
+    rgba(228, 242, 255, 0.25) 60%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(-22deg);
+  pointer-events: none;
+}
+
+/* Жемчужно-белые 3D-шарики (+) без радужных переливов в обычном режиме */
+.pearl-droplet-sphere {
+  background-color: #ffffff;
+  background-image:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.99) 0%, rgba(255, 255, 255, 0.7) 26%, rgba(255, 255, 255, 0) 56%),
+    radial-gradient(circle at 34% 30%, #ffffff 0%, #fbfcfe 50%, #eef2f7 84%, #e2e8f0 100%);
+  box-shadow:
+    inset 3px 3px 7px rgba(255, 255, 255, 0.98),
+    inset -3px -4px 8px rgba(196, 206, 220, 0.55),
+    0 5px 14px -3px rgba(29, 32, 35, 0.14),
+    0 2px 5px -1px rgba(29, 32, 35, 0.07);
+}
+
+/* Яркий перламутровый перелив для маленьких шариков во время шоу-анимаций (насыщеннее и ярче, чем у самого лизуна) */
+.pearl-droplet-vivid-layer {
+  background-image:
+    /* 1. Яркий сферический блик сверху-слева */
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.65) 22%, rgba(255, 255, 255, 0) 50%),
+    /* 2. Насыщенный радужно-перламутровый слой (розовый жемчуг, яркий аквамарин, фиалковый опал, солнечный шампань) */
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.95) 0%,
+      rgba(255, 182, 222, 0.88) 18%,
+      rgba(166, 232, 255, 0.92) 38%,
+      rgba(212, 186, 255, 0.88) 58%,
+      rgba(182, 250, 230, 0.85) 76%,
+      rgba(255, 226, 178, 0.86) 90%,
+      rgba(255, 255, 255, 0.96) 100%
+    ),
+    /* 3. Глубокая жемчужная 3D-основа */
+    radial-gradient(circle at 34% 30%, #ffffff 0%, #f4f8ff 46%, #e3ecfa 80%, #d5e2f4 100%);
+  background-size: 100% 100%, 260% 260%, 100% 100%;
+  animation: pearlIridescenceShift 2.6s ease-in-out infinite;
+  box-shadow:
+    inset 3px 4px 7px rgba(255, 255, 255, 1),
+    inset -3px -4px 9px rgba(164, 192, 238, 0.72),
+    inset 2px -2px 8px rgba(255, 172, 218, 0.68),
+    inset -2px 2px 8px rgba(152, 232, 255, 0.68);
+}
+
+.pearl-droplet-vivid-layer::before {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 14%;
+  width: 44%;
+  height: 28%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.42) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(-28deg);
+  pointer-events: none;
+}
+
+/* Анимация плавного проявления крестиков (+) после завершения шоу-анимации */
+@keyframes dropletCrossMaterialize {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-40deg);
+    filter: blur(3px);
+  }
+  65% {
+    opacity: 0.95;
+    transform: scale(1.12) rotate(4deg);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: blur(0px);
+  }
+}
+
+.droplet-cross-hidden {
+  opacity: 0;
+  transform: scale(0.3) rotate(-40deg);
+  filter: blur(2.5px);
+  transition: opacity 0.32s ease-out, transform 0.35s ease-out, filter 0.32s ease-out;
+}
+
+.droplet-cross-materialize {
+  animation: dropletCrossMaterialize 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Круговой красный шлейф (комета) по контуру найденной карточки */
+@keyframes mtsPerimeterTrail {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 1000;
+  }
+}
+
+.animate-mts-perimeter-trail {
+  animation: mtsPerimeterTrail 2.4s linear infinite;
+}
+
+/* -------------------------------------------------------------
+   Анимация уровня воды в колбе (набирается выше / спускается ниже)
+   и разделения на желейные/водяные капсулы строго внутри желоба МТС
+   ------------------------------------------------------------- */
+
+/* Передняя и задняя волны на поверхности воды внутри колбы */
+@keyframes mtsLiquidWaveFront {
+  0% {
+    transform: translateX(0%) scaleY(1);
+  }
+  50% {
+    transform: translateX(-25%) scaleY(1.25);
+  }
+  100% {
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+
+@keyframes mtsLiquidWaveBack {
+  0% {
+    transform: translateX(-50%) scaleY(1.15);
+  }
+  50% {
+    transform: translateX(-25%) scaleY(0.85);
+  }
+  100% {
+    transform: translateX(0%) scaleY(1.15);
+  }
+}
+
+/* Всплеск волны при переключении (когда вода набирается или спускается) */
+@keyframes mtsWaterSloshPulseA {
+  0% {
+    transform: scaleY(1);
+  }
+  25% {
+    transform: scaleY(1.06) scaleX(0.96);
+  }
+  55% {
+    transform: scaleY(0.96) scaleX(1.02);
+  }
+  80% {
+    transform: scaleY(1.02) scaleX(0.99);
+  }
+  100% {
+    transform: scaleY(1) scaleX(1);
+  }
+}
+
+@keyframes mtsWaterSloshPulseB {
+  0% {
+    transform: scaleY(1);
+  }
+  25% {
+    transform: scaleY(0.94) scaleX(1.03);
+  }
+  55% {
+    transform: scaleY(1.04) scaleX(0.97);
+  }
+  80% {
+    transform: scaleY(0.98) scaleX(1.01);
+  }
+  100% {
+    transform: scaleY(1) scaleX(1);
+  }
+}
+
+/* Пузырьки воздуха, поднимающиеся вверх сквозь воду при наборе уровня */
+@keyframes mtsWaterBubbleRise {
+  0% {
+    transform: translateY(100%) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.55;
+  }
+  80% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: translateY(-220%) scale(1.15);
+    opacity: 0;
+  }
+}
+
+/* Разделение столба воды на упругие желейные/водяные кусочки строго внутри колбы */
+@keyframes mtsJellyDropletSplitOdd {
+  0% {
+    transform: scaleY(1.22) scaleX(0.78);
+  }
+  32% {
+    transform: scaleY(0.84) scaleX(1.06);
+  }
+  62% {
+    transform: scaleY(1.08) scaleX(0.95);
+  }
+  84% {
+    transform: scaleY(0.97) scaleX(1.02);
+  }
+  100% {
+    transform: scaleY(1) scaleX(1);
+  }
+}
+
+@keyframes mtsJellyDropletSplitEven {
+  0% {
+    transform: scaleY(1.18) scaleX(0.80);
+  }
+  35% {
+    transform: scaleY(0.86) scaleX(1.06);
+  }
+  66% {
+    transform: scaleY(1.07) scaleX(0.96);
+  }
+  86% {
+    transform: scaleY(0.98) scaleX(1.01);
+  }
+  100% {
+    transform: scaleY(1) scaleX(1);
+  }
+}
+
+.mts-liquid-wave-front {
+  animation: mtsLiquidWaveFront 1.35s linear infinite;
+}
+
+.mts-liquid-wave-back {
+  animation: mtsLiquidWaveBack 1.85s linear infinite;
+}
+
+.mts-water-bubble-1 {
+  animation: mtsWaterBubbleRise 1.6s ease-in infinite;
+}
+
+.mts-water-bubble-2 {
+  animation: mtsWaterBubbleRise 2.1s ease-in 0.45s infinite;
+}
+
+.mts-water-slosh-active {
+  animation: mtsWaterSloshPulseA 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center bottom;
+}
+
+.mts-water-slosh-alt {
+  animation: mtsWaterSloshPulseB 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center bottom;
+}
+
+.mts-jelly-piece-odd {
+  animation: mtsJellyDropletSplitOdd 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mts-jelly-piece-even {
+  animation: mtsJellyDropletSplitEven 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* -------------------------------------------------------------
+   Шутливая анимация переключения MNP ⇄ TM (Телемаркетинг)
+   ------------------------------------------------------------- */
+
+/* Вращение плашки часов при клике (триггер) */
+@keyframes mtsClockSpinTrigger {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  30% {
+    transform: rotate(180deg) scale(0.92);
+  }
+  70% {
+    transform: rotate(360deg) scale(1.06);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+.animate-mts-clock-spin {
+  animation: mtsClockSpinTrigger 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* 1. Походка красного кубика МТС в стиле лампы Pixar:
+   Приседает, пружинит и серией высоких прыжков напрыгивает на буквы M, N, P,
+   вбивая их под пол, делает поворот лицом к зрителю («чпок»), а затем отлетает на место от TM */
+@keyframes mtsCubePixarLamp {
+  0% {
+    transform: translateX(0px) translateY(0px) scale(1, 1);
+  }
+  /* Подготовка: глубокий пружинистый присед перед прыжком */
+  6% {
+    transform: translateX(0px) translateY(5px) scale(1.3, 0.7);
+  }
+  /* 1-й Прыжок на букву M */
+  14% {
+    transform: translateX(12px) translateY(-24px) scale(0.85, 1.25) rotate(12deg);
+  }
+  20% {
+    /* Приземление со всего размаха на букву M (сплющивает её) */
+    transform: translateX(20px) translateY(3px) scale(1.35, 0.65) rotate(0deg);
+  }
+  /* Отскок и высокий прыжок на букву N с зависанием */
+  26% {
+    transform: translateX(34px) translateY(-36px) scale(0.8, 1.3) rotate(-8deg);
+  }
+  32% {
+    /* Падение всем весом на букву N */
+    transform: translateX(46px) translateY(4px) scale(1.45, 0.55) rotate(0deg);
+  }
+  /* Контрольный повторный прыжок на N */
+  37% {
+    transform: translateX(46px) translateY(-14px) scale(0.9, 1.15);
+  }
+  42% {
+    /* Добивание буквы N в блин */
+    transform: translateX(46px) translateY(5px) scale(1.4, 0.6);
+  }
+  /* 3-й Мощный финальный прыжок на букву P */
+  50% {
+    transform: translateX(62px) translateY(-32px) scale(0.85, 1.25) rotate(14deg);
+  }
+  57% {
+    /* Вбивает букву P в пол по самую шляпку */
+    transform: translateX(74px) translateY(4px) scale(1.45, 0.55) rotate(0deg);
+  }
+  /* Кубик выпрямляется, встаёт победно на месте букв и делает «чпок» (поворот к зрителю) */
+  64% {
+    transform: translateX(74px) translateY(-2px) scale(0.95, 1.05);
+  }
+  72% {
+    transform: translateX(74px) translateY(0px) scale(1.15, 1.15) rotate(8deg);
+  }
+  80% {
+    transform: translateX(74px) translateY(0px) scale(1, 1) rotate(0deg);
+  }
+  /* Прилетает TM и расталкивает кубик назад на базу */
+  86% {
+    transform: translateX(28px) translateY(-8px) rotate(-22deg) scale(0.9, 1.1);
+  }
+  94% {
+    transform: translateX(-4px) translateY(2px) scale(1.1, 0.9) rotate(4deg);
+  }
+  100% {
+    transform: translateX(0px) translateY(0px) scale(1, 1) rotate(0deg);
+  }
+}
+
+.animate-mts-cube-pixar {
+  animation: mtsCubePixarLamp 3.2s cubic-bezier(0.25, 1, 0.4, 1) forwards;
+  transform-origin: center bottom;
+}
+
+/* 2. Мультяшная деревянная кувалда Looney Tunes */
+@keyframes mtsHammerWhack {
+  0% {
+    opacity: 0;
+    transform: translateY(-80px) rotate(-65deg) scale(0.6);
+  }
+  12% {
+    /* Замах кувалды над буквой M */
+    opacity: 1;
+    transform: translateX(18px) translateY(-55px) rotate(-50deg) scale(1);
+  }
+  18% {
+    /* БАМ по букве M! */
+    transform: translateX(24px) translateY(-12px) rotate(15deg) scale(1.2, 0.85);
+  }
+  24% {
+    /* Замах над буквой N */
+    transform: translateX(45px) translateY(-60px) rotate(-55deg) scale(1);
+  }
+  30% {
+    /* БАМ по букве N! */
+    transform: translateX(48px) translateY(-10px) rotate(15deg) scale(1.25, 0.8);
+  }
+  36% {
+    /* Замах повыше над буквой P */
+    transform: translateX(70px) translateY(-75px) rotate(-70deg) scale(1.1);
+  }
+  43% {
+    /* БАМ-БАМ по букве P! Вдалбливает по шляпку */
+    transform: translateX(74px) translateY(-10px) rotate(20deg) scale(1.3, 0.75);
+  }
+  50% {
+    transform: translateX(74px) translateY(-35px) rotate(-20deg) scale(1);
+  }
+  56% {
+    /* Финальный контрольный удар */
+    transform: translateX(74px) translateY(-10px) rotate(22deg) scale(1.3, 0.75);
+  }
+  68% {
+    /* Кувалда со свистом улетает вверх с дымком */
+    transform: translateX(90px) translateY(-120px) rotate(180deg) scale(0.5);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120px);
+  }
+}
+
+.animate-mts-hammer {
+  animation: mtsHammerWhack 2.8s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  transform-origin: 30% 80%;
+}
+
+/* Разрушение буквы M: сминается как гармошка от первого удара */
+@keyframes mtsLetterMFall {
+  0%, 14% {
+    opacity: 1;
+    transform: scale(1, 1) translateY(0);
+  }
+  20% {
+    transform: scale(1.4, 0.35) translateY(12px);
+    opacity: 0.9;
+  }
+  30% {
+    transform: scale(1.5, 0.15) translateY(18px);
+    opacity: 0.6;
+  }
+  45%, 100% {
+    transform: scale(0.2, 0) translateY(24px);
+    opacity: 0;
+  }
+}
+
+.animate-mts-letter-m-fall {
+  animation: mtsLetterMFall 3.2s ease-in-out forwards;
+}
+
+/* Разрушение буквы N: расплющивается в тонкий блинчик прямо под кубиком/кувалдой */
+@keyframes mtsLetterNSquash {
+  0%, 28% {
+    opacity: 1;
+    transform: scale(1, 1) translateY(0);
+  }
+  34% {
+    transform: scale(1.5, 0.3) translateY(13px);
+    opacity: 0.85;
+  }
+  42% {
+    transform: scale(1.8, 0.08) translateY(20px);
+    opacity: 0.45;
+  }
+  55%, 100% {
+    transform: scale(0, 0) translateY(25px);
+    opacity: 0;
+  }
+}
+
+.animate-mts-letter-n-squash {
+  animation: mtsLetterNSquash 3.2s ease-in-out forwards;
+}
+
+/* Разрушение буквы P: вбивается в пол как шляпка гвоздя */
+@keyframes mtsLetterPLaunch {
+  0%, 52% {
+    opacity: 1;
+    transform: scale(1, 1) translateY(0);
+  }
+  58% {
+    transform: scale(1.4, 0.25) translateY(14px);
+    opacity: 0.8;
+  }
+  65% {
+    transform: scale(1.7, 0.06) translateY(22px);
+    opacity: 0.3;
+  }
+  75%, 100% {
+    transform: scale(0, 0) translateY(26px);
+    opacity: 0;
+  }
+}
+
+.animate-mts-letter-p-launch {
+  animation: mtsLetterPLaunch 3.2s ease-in-out forwards;
+}
+
+/* Влет букв TM слева на форсаже со шлейфом и торможением */
+@keyframes mtsTMRushIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-160px) skewX(-32deg) scaleX(1.35);
+    filter: blur(6px);
+  }
+  45% {
+    opacity: 1;
+    transform: translateX(14px) skewX(-14deg) scaleX(1.15);
+    filter: blur(1px);
+  }
+  68% {
+    transform: translateX(-5px) skewX(8deg) scaleX(0.95);
+    filter: blur(0px);
+  }
+  85% {
+    transform: translateX(2px) skewX(-2deg) scaleX(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0px) skewX(0deg) scaleX(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-mts-tm-rush {
+  animation: mtsTMRushIn 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+
+/* Частички пыли и дыма при торможении TM */
+@keyframes mtsDustPuff {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.4) translateX(0) translateY(0);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.4) translateX(-18px) translateY(-6px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2) translateX(-32px) translateY(-12px);
+  }
+}
+
+.animate-mts-dust-puff {
+  animation: mtsDustPuff 0.7s ease-out forwards;
+}
+
+/* Обратная трансформация: добрый дух, небесный луч, ангельские крылышки и нимбы */
+@keyframes mtsHolyLightBeam {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.1) translateY(-30px);
+  }
+  25% {
+    opacity: 0.95;
+    transform: scaleX(1.4) translateY(0);
+  }
+  75% {
+    opacity: 0.85;
+    transform: scaleX(1.1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(0.3) translateY(0);
+  }
+}
+
+.animate-mts-holy-light {
+  animation: mtsHolyLightBeam 2.2s ease-in-out forwards;
+}
+
+/* Плавный ангельский спуск букв сверху на крылышках с покачиванием */
+@keyframes mtsAngelLetterDescend {
+  0% {
+    opacity: 0;
+    transform: translateY(-46px) scale(0.7) rotate(-6deg);
+    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9));
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-16px) scale(1.05) rotate(4deg);
+    filter: drop-shadow(0 0 14px rgba(255, 215, 0, 0.75));
+  }
+  65% {
+    transform: translateY(-4px) scale(0.98) rotate(-2deg);
+    filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
+  }
+  85% {
+    transform: translateY(1.5px) scale(1.02) rotate(0.5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1) rotate(0deg);
+    filter: none;
+  }
+}
+
+.animate-mts-angel-descend {
+  animation: mtsAngelLetterDescend 2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+}
+
+/* Махание маленьких белых крылышек у букв */
+@keyframes mtsAngelWingFlapLeft {
+  0%, 100% {
+    transform: rotate(-18deg) scaleX(1);
+  }
+  50% {
+    transform: rotate(26deg) scaleX(0.85);
+  }
+}
+
+@keyframes mtsAngelWingFlapRight {
+  0%, 100% {
+    transform: rotate(18deg) scaleX(1);
+  }
+  50% {
+    transform: rotate(-26deg) scaleX(0.85);
+  }
+}
+
+.animate-mts-wing-left {
+  animation: mtsAngelWingFlapLeft 0.32s ease-in-out infinite;
+  transform-origin: right center;
+}
+
+.animate-mts-wing-right {
+  animation: mtsAngelWingFlapRight 0.32s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+/* Парящий золотой нимб над буквами */
+@keyframes mtsHaloFloat {
+  0%, 100% {
+    transform: translateY(-2px) scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(2px) scale(1.06);
+    opacity: 1;
+  }
+}
+
+.animate-mts-halo {
+  animation: mtsHaloFloat 0.8s ease-in-out infinite;
+}
+
+/* Искры доброго духа */
+@keyframes mtsSparkleTwinkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2) rotate(90deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.1) rotate(180deg);
+  }
+}
+
+.animate-mts-sparkle {
+  animation: mtsSparkleTwinkle 1.4s ease-in-out infinite;
+}
+
+/* =============================================================
+   3D-ПОВОРОТ СТРАНИЦЫ НА 180° ВОКРУГ ОСИ ЧАСОВ + ОБЪЁМНЫЕ KPI
+   ============================================================= */
+
+/* 1. Мягкое естественное многоцветное переливание вокруг часов в момент поворота
+      (без «змейки», приглушённое, бархатное, одинаковое в обе стороны) */
+@keyframes mtsClockSoftIridescence {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+    background-position: 0% 50%;
+  }
+  18% {
+    opacity: 0.92;
+    transform: scale(1.02);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+    background-position: 100% 50%;
+  }
+  82% {
+    opacity: 0.88;
+    transform: scale(1.01);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.97);
+    background-position: 0% 50%;
+  }
+}
+
+.mts-clock-ambient-shimmer {
+  background: linear-gradient(
+    120deg,
+    rgba(255, 196, 230, 0.92) 0%,
+    rgba(176, 232, 255, 0.94) 25%,
+    rgba(218, 196, 255, 0.92) 50%,
+    rgba(182, 250, 230, 0.90) 75%,
+    rgba(255, 226, 188, 0.92) 100%
+  );
+  background-size: 280% 280%;
+  filter: blur(8px);
+  animation: mtsClockSoftIridescence 2.05s cubic-bezier(0.36, 0, 0.24, 1) forwards;
+}
+
+/* 2. 3D-сцена страницы: вертикальная ось вращения проходит ровно через центр (часы) */
+.mts-3d-stage {
+  perspective: 1750px;
+  perspective-origin: 50% 38%;
+}
+
+.mts-3d-rotator {
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+  transition: transform 2.05s cubic-bezier(0.42, 0, 0.22, 1);
+  will-change: transform;
+}
+
+.mts-3d-rotator-front {
+  transform: rotateY(0deg);
+}
+
+.mts-3d-rotator-back {
+  transform: rotateY(180deg);
+}
+
+.mts-3d-face-front {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.mts-3d-face-back {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: rotateY(180deg);
+}
