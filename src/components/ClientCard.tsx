@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Phone,
   Copy,
   Check,
   ExternalLink,
   Clock,
   Trash2,
-  PhoneOff,
   PhoneForwarded,
   RotateCw,
   CalendarClock,
@@ -667,18 +665,6 @@ export const ClientCard: React.FC<ClientCardProps> = ({
         )}
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                isSaved ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-[#626C77]'
-              }`}
-            >
-              {isSaved ? (
-                <Check className="w-4 h-4 text-emerald-600" />
-              ) : (
-                <PhoneOff className="w-4 h-4 text-[#626C77]" />
-              )}
-            </div>
-
             <div className="flex items-center gap-1.5 flex-wrap">
               <span
                 onClick={handleCopy}
@@ -866,10 +852,6 @@ export const ClientCard: React.FC<ClientCardProps> = ({
               {isSelectedForShare && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
             </button>
           )}
-
-          <div className="w-8 h-8 rounded-xl bg-red-50 text-[#E30613] flex items-center justify-center font-bold shrink-0">
-            <Phone className="w-4 h-4 text-[#E30613]" />
-          </div>
 
           <span
             onClick={handleCopy}

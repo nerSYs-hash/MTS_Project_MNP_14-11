@@ -50,12 +50,18 @@ const PEARL_SAND_GRAINS = Array.from({ length: 112 }, (_, m) => ({
 
 export interface EdgeQuickDockProps {
   onOpenBook?: () => void;
+  onOpenKalka?: () => void;
+  onOpenReadyTimer?: () => void;
   animationMode?: PearlAnimationMode;
+  showBookIcon?: boolean;
 }
 
 export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
   onOpenBook,
+  onOpenKalka,
+  onOpenReadyTimer,
   animationMode = 'auto',
+  showBookIcon = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [dockSide, setDockSide] = useState<DockSide>('right');
@@ -64,6 +70,8 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
   const [isMovingFast, setIsMovingFast] = useState(false);
   const [crossRevealCycle, setCrossRevealCycle] = useState(0);
   const [isBookActivePulse, setIsBookActivePulse] = useState(false);
+  const [isKalkaActivePulse, setIsKalkaActivePulse] = useState(false);
+  const [isTimerActivePulse, setIsTimerActivePulse] = useState(false);
 
   // Ссылки на DOM-узлы для 60fps физической анимации без лишних ререндеров
   const mainBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -590,107 +598,114 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
       }
 
       // 2B. Управление автономными шоу-анимациями в свободном режиме (1 -> 2 -> 3) И музыкальной волной у края экрана
-      if (p.requestedNextStage !== null) {
-        const nextSt = p.requestedNextStage;
+      if (p.animationMode === 'off') {
         p.requestedNextStage = null;
-        if (nextSt === 'none') {
-          stopIdleShow();
-          if (p.dockSide === 'floating') {
-            p.nextIdleWaitSec = getRandomIdleIntervalSec();
-          } else {
-            p.nextDockedWaveWaitSec = getRandomDockedWaveIntervalSec();
-          }
-        } else {
-          startIdleStage(nextSt);
-        }
-      }
-
-      if (p.dockSide === 'floating' && !(p.isDragging && p.dragMoved) && Math.hypot(p.freeVx, p.freeVy) <= 12) {
-        if (p.idleStage === 'docked_musical_wave' || p.idleStage === 'docked_whip_catch') {
-          stopIdleShow();
-        }
-        const mode = p.animationMode || 'auto';
-        if (mode === 'loop_horiz_spin') {
-          if (p.idleStage !== 'horiz_spin') {
-            startIdleStage('horiz_spin');
-          } else {
-            p.idleStageTime += dt;
-          }
-        } else if (mode === 'loop_multi_orbits') {
-          if (p.idleStage !== 'multi_orbits') {
-            startIdleStage('multi_orbits');
-          } else {
-            p.idleStageTime += dt;
-          }
-        } else if (mode === 'loop_flight') {
-          if (p.idleStage !== 'loop_flight') {
-            startIdleStage('loop_flight');
-          } else {
-            p.idleStageTime += dt;
-            if (p.idleStageTime >= 8.65) {
-              // Бесшовный перезапуск облёта с новой случайной траекторией
-              startIdleStage('loop_flight');
-            }
-          }
-        } else {
-          // Автоматический режим ('auto'): по очереди 1 -> 2 -> 3
-          if (p.idleStage === 'none') {
-            p.nextIdleWaitSec -= dt;
-            if (p.nextIdleWaitSec <= 0) {
-              startIdleStage('horiz_spin');
-            }
-          } else {
-            p.idleStageTime += dt;
-            if (p.idleStage === 'horiz_spin' && p.idleStageTime >= 8.5) {
-              // Переход ко 2-й анимации: толкает шарики по одному на разные прорисовываемые орбиты
-              startIdleStage('multi_orbits');
-            } else if (p.idleStage === 'multi_orbits' && p.idleStageTime >= 12.5) {
-              // Переход к 3-й анимации: забирает все шарики внутрь себя, делает круг-облёт и выпускает обратно
-              startIdleStage('loop_flight');
-            } else if (p.idleStage === 'loop_flight' && p.idleStageTime >= 7.45) {
-              // Завершение цикла сразу после вылета шариков на свои места: крестики плавно проявляются, перламутр затихает
-              stopIdleShow();
-              p.nextIdleWaitSec = getRandomIdleIntervalSec();
-            }
-          }
-        }
-      } else if (p.dockSide !== 'floating' && p.isOpen && !(p.isDragging && p.dragMoved) && p.splatTimer <= 0.05) {
-        // Когда жемчужина и её бусины спокойно прикреплены к краю — случайно запускаются либо побег шарика с хлыстом, либо лёгкие волны с песчинками
-        if (
-          p.idleStage !== 'none' &&
-          p.idleStage !== 'docked_musical_wave' &&
-          p.idleStage !== 'docked_whip_catch'
-        ) {
-          stopIdleShow();
-        }
-        if (p.idleStage === 'none') {
-          p.nextDockedWaveWaitSec -= dt;
-          if (p.nextDockedWaveWaitSec <= 0) {
-            // Чередуем с долей случайности, чтобы обе анимации у края регулярно и живо показывались
-            const pickWhip =
-              p.lastDockedStage === 'none'
-                ? true
-                : p.lastDockedStage === 'docked_musical_wave'
-                  ? Math.random() < 0.78
-                  : Math.random() < 0.42;
-            startIdleStage(pickWhip ? 'docked_whip_catch' : 'docked_musical_wave');
-          }
-        } else if (p.idleStage === 'docked_musical_wave') {
-          p.idleStageTime += dt;
-          if (p.idleStageTime >= 7.6) {
-            stopIdleShow();
-            p.nextDockedWaveWaitSec = getRandomDockedWaveIntervalSec();
-          }
-        } else if (p.idleStage === 'docked_whip_catch') {
-          p.idleStageTime += dt;
-          if (p.idleStageTime >= 2.14) {
-            stopIdleShow();
-            p.nextDockedWaveWaitSec = getRandomDockedWaveIntervalSec();
-          }
-        }
-      } else {
         if (p.idleStage !== 'none') {
           stopIdleShow();
+        }
+      } else {
+        if (p.requestedNextStage !== null) {
+          const nextSt = p.requestedNextStage;
+          p.requestedNextStage = null;
+          if (nextSt === 'none') {
+            stopIdleShow();
+            if (p.dockSide === 'floating') {
+              p.nextIdleWaitSec = getRandomIdleIntervalSec();
+            } else {
+              p.nextDockedWaveWaitSec = getRandomDockedWaveIntervalSec();
+            }
+          } else {
+            startIdleStage(nextSt);
+          }
+        }
+
+        if (p.dockSide === 'floating' && !(p.isDragging && p.dragMoved) && Math.hypot(p.freeVx, p.freeVy) <= 12) {
+          if (p.idleStage === 'docked_musical_wave' || p.idleStage === 'docked_whip_catch') {
+            stopIdleShow();
+          }
+          const mode = p.animationMode || 'auto';
+          if (mode === 'loop_horiz_spin') {
+            if (p.idleStage !== 'horiz_spin') {
+              startIdleStage('horiz_spin');
+            } else {
+              p.idleStageTime += dt;
+            }
+          } else if (mode === 'loop_multi_orbits') {
+            if (p.idleStage !== 'multi_orbits') {
+              startIdleStage('multi_orbits');
+            } else {
+              p.idleStageTime += dt;
+            }
+          } else if (mode === 'loop_flight') {
+            if (p.idleStage !== 'loop_flight') {
+              startIdleStage('loop_flight');
+            } else {
+              p.idleStageTime += dt;
+              if (p.idleStageTime >= 8.65) {
+                // Бесшовный перезапуск облёта с новой случайной траекторией
+                startIdleStage('loop_flight');
+              }
+            }
+          } else {
+            // Автоматический режим ('auto'): по очереди 1 -> 2 -> 3
+            if (p.idleStage === 'none') {
+              p.nextIdleWaitSec -= dt;
+              if (p.nextIdleWaitSec <= 0) {
+                startIdleStage('horiz_spin');
+              }
+            } else {
+              p.idleStageTime += dt;
+              if (p.idleStage === 'horiz_spin' && p.idleStageTime >= 8.5) {
+                // Переход ко 2-й анимации: толкает шарики по одному на разные прорисовываемые орбиты
+                startIdleStage('multi_orbits');
+              } else if (p.idleStage === 'multi_orbits' && p.idleStageTime >= 12.5) {
+                // Переход к 3-й анимации: забирает все шарики внутрь себя, делает круг-облёт и выпускает обратно
+                startIdleStage('loop_flight');
+              } else if (p.idleStage === 'loop_flight' && p.idleStageTime >= 7.45) {
+                // Завершение цикла сразу после вылета шариков на свои места: крестики плавно проявляются, перламутр затихает
+                stopIdleShow();
+                p.nextIdleWaitSec = getRandomIdleIntervalSec();
+              }
+            }
+          }
+        } else if (p.dockSide !== 'floating' && p.isOpen && !(p.isDragging && p.dragMoved) && p.splatTimer <= 0.05) {
+          // Когда жемчужина и её бусины спокойно прикреплены к краю — случайно запускаются либо побег шарика с хлыстом, либо лёгкие волны с песчинками
+          if (
+            p.idleStage !== 'none' &&
+            p.idleStage !== 'docked_musical_wave' &&
+            p.idleStage !== 'docked_whip_catch'
+          ) {
+            stopIdleShow();
+          }
+          if (p.idleStage === 'none') {
+            p.nextDockedWaveWaitSec -= dt;
+            if (p.nextDockedWaveWaitSec <= 0) {
+              // Чередуем с долей случайности, чтобы обе анимации у края регулярно и живо показывались
+              const pickWhip =
+                p.lastDockedStage === 'none'
+                  ? true
+                  : p.lastDockedStage === 'docked_musical_wave'
+                    ? Math.random() < 0.78
+                    : Math.random() < 0.42;
+              startIdleStage(pickWhip ? 'docked_whip_catch' : 'docked_musical_wave');
+            }
+          } else if (p.idleStage === 'docked_musical_wave') {
+            p.idleStageTime += dt;
+            if (p.idleStageTime >= 7.6) {
+              stopIdleShow();
+              p.nextDockedWaveWaitSec = getRandomDockedWaveIntervalSec();
+            }
+          } else if (p.idleStage === 'docked_whip_catch') {
+            p.idleStageTime += dt;
+            if (p.idleStageTime >= 2.14) {
+              stopIdleShow();
+              p.nextDockedWaveWaitSec = getRandomDockedWaveIntervalSec();
+            }
+          }
+        } else {
+          if (p.idleStage !== 'none') {
+            stopIdleShow();
+          }
         }
       }
 
@@ -1980,15 +1995,17 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
     // Если это был обычный клик
     if (!p.dragMoved) {
       if (p.dockSide === 'floating') {
-        // В отлипшем режиме клик переключает шоу-анимации по очереди: 1 (горизонтальная) -> 2 (орбиты) -> 3 (засасывание и облёт)
-        if (p.idleStage === 'none') {
-          p.requestedNextStage = 'horiz_spin';
-        } else if (p.idleStage === 'horiz_spin') {
-          p.requestedNextStage = 'multi_orbits';
-        } else if (p.idleStage === 'multi_orbits') {
-          p.requestedNextStage = 'loop_flight';
-        } else {
-          p.requestedNextStage = 'none';
+        if (p.animationMode !== 'off') {
+          // В отлипшем режиме клик переключает шоу-анимации по очереди: 1 (горизонтальная) -> 2 (орбиты) -> 3 (засасывание и облёт)
+          if (p.idleStage === 'none') {
+            p.requestedNextStage = 'horiz_spin';
+          } else if (p.idleStage === 'horiz_spin') {
+            p.requestedNextStage = 'multi_orbits';
+          } else if (p.idleStage === 'multi_orbits') {
+            p.requestedNextStage = 'loop_flight';
+          } else {
+            p.requestedNextStage = 'none';
+          }
         }
         p.velScaleX = -2.0;
         p.velScaleY = 1.8;
@@ -2137,10 +2154,25 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
         </svg>
       </div>
 
-      {/* СЛОЙ 2 (z-10 / z-25 при проходе спереди): 4 жемчужных 3D-шарика (на 1-м шарике — Книга, на остальных — крестики; во время анимации скрываются и переливаются перламутром) */}
+      {/* СЛОЙ 2 (z-10 / z-25 при проходе спереди): 4 жемчужных 3D-шарика (1: + / Книга в Dev, 2: Калька, 3: Таймер Ready, 4: +) */}
       {[0, 1, 2, 3].map((index) => {
-        const isBookSphere = index === 0;
+        const isBookSphere = index === 0 && Boolean(showBookIcon);
+        const isKalkaSphere = index === 1;
+        const isTimerSphere = index === 2;
         const hideIcon = isIdleShowActive || isMovingFast;
+
+        const isPulsingSphere =
+          (isBookSphere && isBookActivePulse) ||
+          (isKalkaSphere && isKalkaActivePulse) ||
+          (isTimerSphere && isTimerActivePulse);
+
+        const sphereTitle = isBookSphere
+          ? 'Статистика группы'
+          : isKalkaSphere
+          ? 'Калька'
+          : isTimerSphere
+          ? 'Таймер Ready'
+          : 'Быстрое действие';
 
         return (
           <button
@@ -2155,7 +2187,6 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
               if (p.idleStage !== 'none' || p.wasMovingFast) return;
 
               if (isBookSphere) {
-                // Нажатие на сферу с Книгой (когда сферы стоят спокойно)
                 const d = p.droplets[0];
                 d.scale = 1.24;
                 setIsBookActivePulse(true);
@@ -2164,17 +2195,35 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
                 return;
               }
 
-              // Для остальных 3 сфер (+) у края экрана: запуск побега шарика и поимки хлыстом
-              if (p.dockSide !== 'floating' && p.isOpen) {
+              if (isKalkaSphere) {
+                const d = p.droplets[1];
+                d.scale = 1.24;
+                setIsKalkaActivePulse(true);
+                setTimeout(() => setIsKalkaActivePulse(false), 420);
+                onOpenKalka?.();
+                return;
+              }
+
+              if (isTimerSphere) {
+                const d = p.droplets[2];
+                d.scale = 1.24;
+                setIsTimerActivePulse(true);
+                setTimeout(() => setIsTimerActivePulse(false), 420);
+                onOpenReadyTimer?.();
+                return;
+              }
+
+              // Для свободных сфер (+) у края экрана: запуск побега шарика и поимки хлыстом (если анимация не отключена)
+              if (p.dockSide !== 'floating' && p.isOpen && p.animationMode !== 'off') {
                 p.requestedWhipTarget = index;
                 p.requestedNextStage = 'docked_whip_catch';
               }
             }}
-            title={isBookSphere ? 'Открыть книгу' : 'Быстрое действие'}
+            title={sphereTitle}
             className={`pearl-droplet-sphere overflow-hidden border-0 outline-none group absolute left-0 top-0 z-10 -ml-4.5 -mt-4.5 w-9 h-9 rounded-full flex items-center justify-center cursor-pointer will-change-transform ${
-              isBookSphere && isBookActivePulse ? 'ring-2 ring-[#0077FF]/35' : ''
+              isPulsingSphere ? 'ring-2 ring-[#0077FF]/35' : ''
             }`}
-            aria-label={isBookSphere ? 'Книга' : 'Добавить'}
+            aria-label={sphereTitle}
           >
             {/* Яркий перламутровый слой, который плавно включается на время шоу-анимаций */}
             <span
@@ -2185,7 +2234,7 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
               style={{ animationDelay: `${-index * 0.55}s` }}
             />
 
-            {/* Иконка внутри сферы (Книга на первой сфере, + на остальных 3): скрыта пока сферы кружатся/в анимации, и проявляется когда они останавливаются */}
+            {/* Иконка внутри сферы: скрыта пока сферы кружатся/в анимации, и проявляется когда они останавливаются */}
             <span
               key={`icon-${index}-${hideIcon ? 'hidden' : crossRevealCycle}`}
               className={`relative z-10 flex items-center justify-center text-[#56606B] ${
@@ -2210,7 +2259,6 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                   >
-                    {/* Мягкая подложка раскрытых страниц */}
                     <path
                       d="M12 6.2C9.7 4.7 6.1 4.4 3.4 5.3C2.8 5.5 2.4 6.1 2.4 6.7V17.4C2.4 18.1 3.0 18.6 3.7 18.4C6.3 17.6 9.6 17.9 12 19.4C14.4 17.9 17.7 17.6 20.3 18.4C21.0 18.6 21.6 18.1 21.6 17.4V6.7C21.6 6.1 21.2 5.5 20.6 5.3C17.9 4.4 14.3 4.7 12 6.2Z"
                       fill="rgba(255, 255, 255, 0.78)"
@@ -2219,33 +2267,107 @@ export const EdgeQuickDock: React.FC<EdgeQuickDockProps> = ({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                    {/* Центральный корешок книги */}
                     <path
                       d="M12 6.2V19.4"
                       stroke="#56606B"
                       strokeWidth="1.65"
                       strokeLinecap="round"
                     />
-                    {/* Строчки текста на левой странице */}
                     <path
                       d="M5.3 9.2C6.9 8.8 8.4 9.0 9.6 9.6M5.3 12.1C6.9 11.7 8.4 11.9 9.6 12.5M5.3 15.0C6.7 14.7 7.9 14.8 9.0 15.2"
                       stroke="#6E7A87"
                       strokeWidth="1.25"
                       strokeLinecap="round"
                     />
-                    {/* Строчки текста на правой странице */}
                     <path
                       d="M18.7 9.2C17.1 8.8 15.6 9.0 14.4 9.6M18.7 12.1C17.1 11.7 15.6 11.9 14.4 12.5"
                       stroke="#6E7A87"
                       strokeWidth="1.25"
                       strokeLinecap="round"
                     />
-                    {/* Маленькая закладка-ленточка */}
                     <path
                       d="M15.8 5.2V10.6L17.1 9.5L18.4 10.6V5.1"
                       fill="rgba(227, 6, 19, 0.16)"
                       stroke="#E30613"
                       strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              ) : isKalkaSphere ? (
+                <span className="flex items-center justify-center transition-transform duration-300 ease-out group-hover:scale-112 group-hover:-translate-y-0.5">
+                  {/* Значок «Калька»: два полупрозрачных наложенных квадрата-трафарета с точкой прицела */}
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-[17px] h-[17px] overflow-visible"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    {/* Нижний базовый квадрат */}
+                    <rect
+                      x="3.2"
+                      y="6.8"
+                      width="12.2"
+                      height="12.2"
+                      rx="3"
+                      fill="rgba(255, 255, 255, 0.72)"
+                      stroke="#56606B"
+                      strokeWidth="1.65"
+                    />
+                    {/* Верхний прозрачный лист кальки с пунктирной гранью */}
+                    <rect
+                      x="8.4"
+                      y="3.6"
+                      width="12.4"
+                      height="12.4"
+                      rx="3"
+                      fill="rgba(255, 255, 255, 0.84)"
+                      stroke="#0077FF"
+                      strokeWidth="1.6"
+                      strokeDasharray="2.4 1.8"
+                    />
+                    {/* Точка отпечатка сигнала в центре пересечения */}
+                    <circle cx="14.6" cy="9.8" r="1.75" fill="#E30613" />
+                  </svg>
+                </span>
+              ) : isTimerSphere ? (
+                <span className="flex items-center justify-center transition-transform duration-300 ease-out group-hover:scale-112 group-hover:-translate-y-0.5">
+                  {/* Значок «Таймер Ready»: секундомер в фирменном контуре МТС */}
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-[17px] h-[17px] overflow-visible"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    {/* Верхняя кнопка секундомера */}
+                    <path
+                      d="M9.6 2.8H14.4M12 2.8V5.1"
+                      stroke="#56606B"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                    {/* Боковой пушер */}
+                    <path
+                      d="M17.6 6.2L19.1 4.7"
+                      stroke="#56606B"
+                      strokeWidth="1.65"
+                      strokeLinecap="round"
+                    />
+                    {/* Корпус таймера */}
+                    <circle
+                      cx="12"
+                      cy="13.2"
+                      r="7.6"
+                      fill="rgba(255, 255, 255, 0.82)"
+                      stroke="#56606B"
+                      strokeWidth="1.75"
+                    />
+                    {/* Стрелка отсчета Ready */}
+                    <path
+                      d="M12 9.4V13.2L14.7 14.8"
+                      stroke="#E30613"
+                      strokeWidth="1.75"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />

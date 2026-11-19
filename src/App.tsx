@@ -3,7 +3,7 @@
  * Полная интеграция: таймеры перезвона, часы ПК, автоопределение поясов РФ и расчет конверсии
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Maximize2, Check } from 'lucide-react';
+import { ChevronDown, Maximize2 } from 'lucide-react';
 import { Header } from './components/Header';
 import { KpiDashboard } from './components/KpiDashboard';
 import { AddClientForm } from './components/AddClientForm';
@@ -16,17 +16,33 @@ import { OnboardingGuideModal } from './components/OnboardingGuideModal';
 import { NotificationToastContainer, ToastItem } from './components/NotificationToast';
 import { EdgeQuickDock } from './components/EdgeQuickDock';
 import { BookWorkspaceModal } from './components/BookWorkspaceModal';
+import { KalkaModal, createDefaultKalkaZone } from './components/KalkaModal';
+import { ReadyTimerModal } from './components/ReadyTimerModal';
 import {
   SupervisorAccessModal,
   SupervisorAccount,
   loadActiveAccountSession,
   saveActiveAccountSession,
+  syncAccountToUrmConfig,
+  savePersonalSettingsSnapshotForUser,
 } from './components/SupervisorAccessModal';
 import { PostUpdateBanner } from './components/PostUpdateBanner';
 import { CURRENT_APP_VERSION } from './utils/updateManager';
 import { loadUrmSyncConfig, pushEmployeeStatsToUrmFolder } from './utils/urmStatSync';
 import { useSystemClock } from './hooks/useSystemClock';
-import { ClientLead, CallStatus, ShiftStats, TimerSettings, SavedClientRecord, SavedClientType, ShiftHistoryRecord, ShiftHistoryType } from './types';
+import {
+  ClientLead,
+  CallStatus,
+  ShiftStats,
+  TimerSettings,
+  SavedClientRecord,
+  SavedClientType,
+  ShiftHistoryRecord,
+  ShiftHistoryType,
+  KalkaZoneItem,
+  KalkaTargetAction,
+  KalkaDisplayMode,
+} from './types';
 import {
   loadLeadsFromStorage,
   saveLeadsToStorage,
@@ -120,10 +136,82 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isBookWindowOpen, setIsBookWindowOpen] = useState(false);
+  const [isKalkaWindowOpen, setIsKalkaWindowOpen] = useState(false);
+  const [isReadyTimerWindowOpen, setIsReadyTimerWindowOpen] = useState(false);
   const [isSupervisorModalOpen, setIsSupervisorModalOpen] = useState(false);
   const [supervisorSession, setSupervisorSession] = useState<SupervisorAccount | null>(() =>
     loadActiveAccountSession()
   );
+
+  // Состояние «Кальки» (2-я капелька Жемчужины)
+  const [kalkaZones, setKalkaZones] = useState<KalkaZoneItem[]>(() => {
+    try {
+      const raw = localStorage.getItem('mts_kalka_zones_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [createDefaultKalkaZone(0, 'timer')];
+  });
+  const [kalkaDisplayMode, setKalkaDisplayMode] = useState<KalkaDisplayMode>(() => {
+    try {
+      const saved = localStorage.getItem('mts_kalka_display_mode_v1');
+      if (saved === 'setup' || saved === 'transparent' || saved === 'off') {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'off';
+  });
+
+  // Состояние «Таймер Ready» (3-я капелька Жемчужины)
+  const [readyTargetSeconds, setReadyTargetSeconds] = useState<number>(() => {
+    try {
+      const raw = Number(localStorage.getItem('mts_ready_timer_target_sec_v1'));
+      if (raw > 0) return raw;
+    } catch {
+      // ignore
+    }
+    return 27000; // 07:30:00
+  });
+  const [readyRemainingSeconds, setReadyRemainingSeconds] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('mts_ready_timer_remaining_sec_v1');
+      if (raw !== null) {
+        const num = Number(raw);
+        if (!Number.isNaN(num) && num >= 0) return num;
+      }
+    } catch {
+      // ignore
+    }
+    return 27000;
+  });
+  const [isReadyTimerRunning, setIsReadyTimerRunning] = useState<boolean>(false);
+  const [readyFavorites, setReadyFavorites] = useState<number[]>(() => {
+    try {
+      const raw = localStorage.getItem('mts_ready_timer_favorites_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [27000, 28800, 21600];
+  });
+  const [readyTimerScale, setReadyTimerScale] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('mts_urm_ready_timer_scale_v1'));
+      if (!Number.isNaN(saved) && saved >= 0.85 && saved <= 2.25) return saved;
+    } catch {
+      // ignore
+    }
+    return 1;
+  });
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
     try {
       return localStorage.getItem('mts_urm_onboarding_completed') !== 'true';
@@ -215,7 +303,7 @@ export default function App() {
         phone: next ? 'Режим разработки (Dev)' : 'Режим сотрудника v2.8.0',
         badgeText: next ? 'Dev ВКЛ' : 'Dev ВЫКЛ',
         title: next
-          ? 'Включены: Жемчужина, Статистика смен, 3D и анимации'
+          ? 'Включены: Жемчужина, Статистика группы, 3D и анимации'
           : 'Экспериментальные функции скрыты',
         subtitle: 'Переключение по коду 79293664010',
       });
@@ -243,7 +331,10 @@ export default function App() {
 
   useEffect(() => {
     saveSettingsToStorage(settings);
-  }, [settings]);
+    if (supervisorSession) {
+      savePersonalSettingsSnapshotForUser(supervisorSession.login);
+    }
+  }, [settings, supervisorSession]);
 
   useEffect(() => {
     saveSavedClientsToStorage(savedClients);
@@ -253,8 +344,11 @@ export default function App() {
     saveShiftHistoryToStorage(shiftHistory);
   }, [shiftHistory]);
 
-  // Бесконтактная фоновая передача статистики сотрудника в общую папку УРМ при каждом изменении или входе в аккаунт
+  // Бесконтактная фоновая передача статистики сотрудника в общую папку при каждом изменении или входе в профиль
   useEffect(() => {
+    if (supervisorSession) {
+      syncAccountToUrmConfig(supervisorSession);
+    }
     const cfg = loadUrmSyncConfig();
     if (!cfg.enabled) return;
     const timer = window.setTimeout(() => {
@@ -268,10 +362,336 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('mts_saved_table_expanded', String(isSavedTableExpanded));
+      if (supervisorSession) {
+        savePersonalSettingsSnapshotForUser(supervisorSession.login);
+      }
     } catch {
       // ignore
     }
-  }, [isSavedTableExpanded]);
+  }, [isSavedTableExpanded, supervisorSession]);
+
+  useEffect(() => {
+    if (supervisorSession) {
+      savePersonalSettingsSnapshotForUser(supervisorSession.login);
+    }
+  }, [isDevBranchMode, supervisorSession]);
+
+  // Сохранение настроек «Кальки» и «Таймера Ready» в localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_kalka_zones_v1', JSON.stringify(kalkaZones));
+    } catch {
+      // ignore
+    }
+  }, [kalkaZones]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_kalka_display_mode_v1', kalkaDisplayMode);
+    } catch {
+      // ignore
+    }
+  }, [kalkaDisplayMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_ready_timer_target_sec_v1', String(readyTargetSeconds));
+    } catch {
+      // ignore
+    }
+  }, [readyTargetSeconds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_ready_timer_remaining_sec_v1', String(readyRemainingSeconds));
+    } catch {
+      // ignore
+    }
+  }, [readyRemainingSeconds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_ready_timer_favorites_v1', JSON.stringify(readyFavorites));
+    } catch {
+      // ignore
+    }
+  }, [readyFavorites]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_urm_ready_timer_scale_v1', String(readyTimerScale));
+    } catch {
+      // ignore
+    }
+  }, [readyTimerScale]);
+
+  // Секундный отсчет Таймера Ready и запись отработанного времени Реди в статистику сотрудника
+  useEffect(() => {
+    if (!isReadyTimerRunning) return;
+    const timer = window.setInterval(() => {
+      setReadyRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          setIsReadyTimerRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+      setStats((prev) => ({
+        ...prev,
+        readyTimeSeconds: (prev.readyTimeSeconds || 0) + 1,
+      }));
+      setShiftHistory((prev) =>
+        prev.map((rec, idx) =>
+          idx === 0
+            ? {
+                ...rec,
+                readyTimeSeconds: (rec.readyTimeSeconds ?? (stats.readyTimeSeconds || 0)) + 1,
+              }
+            : rec
+        )
+      );
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isReadyTimerRunning, stats.readyTimeSeconds]);
+
+  // Управление Таймером Ready и реакция на сигнал «Кальки»
+  const handleToggleReadyTimerRun = () => {
+    setIsReadyTimerRunning((prevRunning) => {
+      if (prevRunning) {
+        // 1-е нажатие: пауза таймера
+        return false;
+      }
+      // 2-е нажатие: повторный запуск / продолжение
+      setReadyRemainingSeconds((rem) => (rem <= 0 ? readyTargetSeconds : rem));
+      return true;
+    });
+  };
+
+  const handleApplyReadyDuration = (totalSeconds: number) => {
+    const safe = Math.max(1, Math.floor(totalSeconds));
+    setIsReadyTimerRunning(false);
+    setReadyTargetSeconds(safe);
+    setReadyRemainingSeconds(safe);
+  };
+
+  const handleResetReadyTimer = () => {
+    setIsReadyTimerRunning(false);
+    setReadyRemainingSeconds(readyTargetSeconds);
+  };
+
+  const handleAddReadyFavorite = (totalSeconds: number) => {
+    const safe = Math.max(1, Math.floor(totalSeconds));
+    setReadyFavorites((prev) => (prev.includes(safe) ? prev : [safe, ...prev]));
+  };
+
+  const handleRemoveReadyFavorite = (totalSeconds: number) => {
+    setReadyFavorites((prev) => prev.filter((item) => item !== totalSeconds));
+  };
+
+  const handleKalkaTriggerAction = (target: KalkaTargetAction) => {
+    if (target === 'calls') {
+      handleAdjustCalls(1);
+    } else if (target === 'saved') {
+      handleAdjustSaved(1);
+    } else if (target === 'timer') {
+      handleToggleReadyTimerRun();
+    }
+  };
+
+  const kalkaTriggerHandlerRef = useRef(handleKalkaTriggerAction);
+  kalkaTriggerHandlerRef.current = handleKalkaTriggerAction;
+
+  const readyTimerHandlersRef = useRef({
+    toggleRun: handleToggleReadyTimerRun,
+    reset: handleResetReadyTimer,
+    applyDuration: handleApplyReadyDuration,
+    addFavorite: handleAddReadyFavorite,
+    removeFavorite: handleRemoveReadyFavorite,
+  });
+  readyTimerHandlersRef.current = {
+    toggleRun: handleToggleReadyTimerRun,
+    reset: handleResetReadyTimer,
+    applyDuration: handleApplyReadyDuration,
+    addFavorite: handleAddReadyFavorite,
+    removeFavorite: handleRemoveReadyFavorite,
+  };
+
+  // Синхронизация внешних окон «Кальки» (за пределами рабочего окна приложения) через Electron IPC
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        kalkaSyncWindows?: (payload: {
+          isOpen?: boolean;
+          zones: KalkaZoneItem[];
+          displayMode: KalkaDisplayMode;
+        }) => Promise<unknown>;
+      };
+    }).electronAPI;
+    if (api?.kalkaSyncWindows) {
+      api.kalkaSyncWindows({
+        isOpen: isKalkaWindowOpen,
+        zones: kalkaZones,
+        displayMode: kalkaDisplayMode,
+      }).catch(() => {});
+    }
+  }, [isKalkaWindowOpen, kalkaZones, kalkaDisplayMode]);
+
+  // Слушатель срабатываний и изменений внешних окон «Кальки» из других программ Windows
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        onKalkaTrigger?: (cb: (payload: { id: string; target: KalkaTargetAction }) => void) => () => void;
+        onKalkaStateChange?: (cb: (payload: Record<string, unknown>) => void) => () => void;
+      };
+    }).electronAPI;
+
+    const unsubTrigger = api?.onKalkaTrigger
+      ? api.onKalkaTrigger((payload) => {
+          if (payload?.target) {
+            kalkaTriggerHandlerRef.current(payload.target);
+          }
+        })
+      : undefined;
+
+    const unsubState = api?.onKalkaStateChange
+      ? api.onKalkaStateChange((payload) => {
+          const action = String(payload?.action || '');
+          if (action === 'close-control') {
+            setIsKalkaWindowOpen(false);
+          } else if (action === 'set-mode') {
+            const nextMode = payload?.displayMode;
+            if (nextMode === 'setup' || nextMode === 'transparent' || nextMode === 'off') {
+              setKalkaDisplayMode(nextMode);
+            }
+          } else if (action === 'set-count') {
+            const rawCount = Number(payload?.count);
+            const nextCount = Math.max(0, Math.min(12, Number.isNaN(rawCount) ? 0 : Math.floor(rawCount)));
+            setKalkaZones((prev) => {
+              if (nextCount === prev.length) return prev;
+              if (nextCount < prev.length) return prev.slice(0, nextCount);
+              const added = [...prev];
+              for (let i = prev.length; i < nextCount; i++) {
+                added.push(createDefaultKalkaZone(i, 'timer'));
+              }
+              return added;
+            });
+          } else if (action === 'set-zone-target') {
+            const id = String(payload?.id || '');
+            const target = payload?.target as KalkaTargetAction;
+            if (id && (target === 'calls' || target === 'saved' || target === 'timer')) {
+              setKalkaZones((prev) =>
+                prev.map((z) => (z.id === id ? { ...z, target } : z))
+              );
+            }
+          } else if (action === 'delete-zone') {
+            const id = String(payload?.id || '');
+            setKalkaZones((prev) => prev.filter((z) => z.id !== id));
+          } else if (action === 'zone-bounds') {
+            const id = String(payload?.id || '');
+            const x = Number(payload?.x);
+            const y = Number(payload?.y);
+            const width = Number(payload?.width);
+            const height = Number(payload?.height);
+            if (id && !Number.isNaN(x) && !Number.isNaN(y)) {
+              setKalkaZones((prev) =>
+                prev.map((z) =>
+                  z.id === id
+                    ? {
+                        ...z,
+                        x,
+                        y,
+                        width: !Number.isNaN(width) && width >= 44 ? width : z.width,
+                        height: !Number.isNaN(height) && height >= 28 ? height : z.height,
+                      }
+                    : z
+                )
+              );
+            }
+          }
+        })
+      : undefined;
+
+    return () => {
+      if (unsubTrigger) unsubTrigger();
+      if (unsubState) unsubState();
+    };
+  }, []);
+
+  // Синхронизация внешнего окна «Таймер Ready» (за пределами рабочего окна приложения) через Electron IPC
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        readyTimerSyncWindow?: (payload: {
+          isOpen: boolean;
+          remainingSeconds: number;
+          targetSeconds: number;
+          isRunning: boolean;
+          favorites: number[];
+          scale: number;
+        }) => Promise<unknown>;
+      };
+    }).electronAPI;
+    if (api?.readyTimerSyncWindow) {
+      api.readyTimerSyncWindow({
+        isOpen: isReadyTimerWindowOpen,
+        remainingSeconds: readyRemainingSeconds,
+        targetSeconds: readyTargetSeconds,
+        isRunning: isReadyTimerRunning,
+        favorites: readyFavorites,
+        scale: readyTimerScale,
+      }).catch(() => {});
+    }
+  }, [
+    isReadyTimerWindowOpen,
+    readyRemainingSeconds,
+    readyTargetSeconds,
+    isReadyTimerRunning,
+    readyFavorites,
+    readyTimerScale,
+  ]);
+
+  // Слушатель команд от внешнего окна «Таймер Ready»
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        onReadyTimerAction?: (cb: (payload: Record<string, unknown>) => void) => () => void;
+      };
+    }).electronAPI;
+    if (!api?.onReadyTimerAction) return;
+    const unsubscribe = api.onReadyTimerAction((payload) => {
+      const action = String(payload?.action || '');
+      if (action === 'toggle-run') {
+        readyTimerHandlersRef.current.toggleRun();
+      } else if (action === 'reset') {
+        readyTimerHandlersRef.current.reset();
+      } else if (action === 'apply-duration') {
+        const sec = Number(payload?.totalSeconds);
+        if (!Number.isNaN(sec) && sec > 0) {
+          readyTimerHandlersRef.current.applyDuration(sec);
+        }
+      } else if (action === 'add-favorite') {
+        const sec = Number(payload?.totalSeconds);
+        if (!Number.isNaN(sec) && sec > 0) {
+          readyTimerHandlersRef.current.addFavorite(sec);
+        }
+      } else if (action === 'remove-favorite') {
+        const sec = Number(payload?.totalSeconds);
+        if (!Number.isNaN(sec) && sec > 0) {
+          readyTimerHandlersRef.current.removeFavorite(sec);
+        }
+      } else if (action === 'set-scale') {
+        const sc = Number(payload?.scale);
+        if (!Number.isNaN(sc)) {
+          setReadyTimerScale(Math.max(0.85, Math.min(2.25, sc)));
+        }
+      } else if (action === 'close') {
+        setIsReadyTimerWindowOpen(false);
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Проверка истекших таймеров каждую секунду при изменении системных часов
   useEffect(() => {
@@ -1666,8 +2086,14 @@ export default function App() {
     }
   };
 
-  // Обработчик вставки кода в поле «Ссылка» Карты клиента (2.1 — строгая проверка без ложных срабатываний)
+  // Обработчик вставки кода в поле «Ссылка» или ввода секретного номера в Карте клиента
   const handleSpecialPayloadPasteInForm = (rawText: string): boolean => {
+    const strictPhone = cleanToStrictMtsPhone(rawText);
+    if (strictPhone === '79293664010') {
+      toggleDevBranchMode();
+      return true;
+    }
+
     const parsed = parseMtsClipboardPayload(rawText);
     if (!parsed) return false;
 
@@ -2254,6 +2680,9 @@ export default function App() {
         activeAccount={supervisorSession}
         onOpenAccountModal={() => setIsSupervisorModalOpen(true)}
         onLogoutAccount={() => {
+          if (supervisorSession) {
+            savePersonalSettingsSnapshotForUser(supervisorSession.login);
+          }
           saveActiveAccountSession(null);
           setSupervisorSession(null);
         }}
@@ -2392,18 +2821,13 @@ export default function App() {
                                 />
                               ) : (
                                 <div className="bg-white border border-[#E2E8F0] rounded-3xl p-4 sm:p-5 shadow-mts-card flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                                      <Check className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                      <h4 className="text-sm font-bold text-[#1D2023] font-mts-extended">
-                                        Все вызовы в графике
-                                      </h4>
-                                      <p className="text-xs text-[#626C77] mt-0.5">
-                                        Срочных исходящих звонков прямо сейчас нет
-                                      </p>
-                                    </div>
+                                  <div>
+                                    <h4 className="text-sm font-bold text-[#1D2023] font-mts-extended">
+                                      Все вызовы в графике
+                                    </h4>
+                                    <p className="text-xs text-[#626C77] mt-0.5">
+                                      Срочных исходящих звонков прямо сейчас нет
+                                    </p>
                                   </div>
                                   <button
                                     type="button"
@@ -2505,31 +2929,95 @@ export default function App() {
 
       {/* Интерактивное руководство оператора (Гайд при первом запуске) */}
       <OnboardingGuideModal
-        isOpen={isOnboardingOpen}
+        isOpen={(!isDevBranchMode || Boolean(supervisorSession)) && isOnboardingOpen}
         onClose={() => setIsOnboardingOpen(false)}
       />
 
       {/* Компактное окно со сводкой обновления поверх рабочего пространства */}
       <PostUpdateBanner
-        isOpen={isPostUpdateBannerOpen}
+        isOpen={(!isDevBranchMode || Boolean(supervisorSession)) && isPostUpdateBannerOpen}
         onDismiss={handleDismissPostUpdateBanner}
       />
 
-      {/* Модальное окно Входа / Регистрации аккаунта УРМ */}
-      <SupervisorAccessModal
-        isOpen={isSupervisorModalOpen}
-        onClose={() => setIsSupervisorModalOpen(false)}
-        activeSession={supervisorSession}
-        onLoginSuccess={(acc) => setSupervisorSession(acc)}
-        onLogout={() => {
-          saveActiveAccountSession(null);
-          setSupervisorSession(null);
-        }}
+      {/* Модальное окно Кальки (2-я капля Жемчужины) */}
+      <KalkaModal
+        isOpen={isKalkaWindowOpen}
+        onClose={() => setIsKalkaWindowOpen(false)}
+        zones={kalkaZones}
+        onChangeZones={setKalkaZones}
+        displayMode={kalkaDisplayMode}
+        onChangeDisplayMode={setKalkaDisplayMode}
+        onTriggerAction={handleKalkaTriggerAction}
       />
 
-      {/* Экспериментальные модули Dev-ветки (раскрываются только по секретному коду 79293664010) */}
+      {/* Модальное окно Таймера Ready (3-я капля Жемчужины) */}
+      <ReadyTimerModal
+        isOpen={isReadyTimerWindowOpen}
+        onClose={() => setIsReadyTimerWindowOpen(false)}
+        remainingSeconds={readyRemainingSeconds}
+        targetSeconds={readyTargetSeconds}
+        isRunning={isReadyTimerRunning}
+        favorites={readyFavorites}
+        scale={readyTimerScale}
+        onChangeScale={setReadyTimerScale}
+        onApplyDuration={handleApplyReadyDuration}
+        onToggleRun={handleToggleReadyTimerRun}
+        onReset={handleResetReadyTimer}
+        onAddFavorite={handleAddReadyFavorite}
+        onRemoveFavorite={handleRemoveReadyFavorite}
+      />
+
+      {/* Жемчужина с каплями (1-я капля со статистикой скрыта в обычной версии, активна только в Dev-ветке) */}
+      <div className={`fixed inset-0 z-40 pointer-events-none ${isDevBranchMode ? 'mts-3d-stage' : ''}`}>
+        <div
+          className={`w-full h-full ${
+            isDevBranchMode
+              ? `mts-3d-rotator mts-3d-face-front ${
+                  isPageFlipped
+                    ? 'mts-3d-rotator-back pointer-events-none'
+                    : 'mts-3d-rotator-front'
+                }`
+              : ''
+          }`}
+        >
+          <EdgeQuickDock
+            showBookIcon={isDevBranchMode}
+            onOpenBook={isDevBranchMode ? () => setIsBookWindowOpen((prev) => !prev) : undefined}
+            onOpenKalka={() => setIsKalkaWindowOpen((prev) => !prev)}
+            onOpenReadyTimer={() => setIsReadyTimerWindowOpen((prev) => !prev)}
+            animationMode={settings.pearlAnimationMode || 'auto'}
+          />
+        </div>
+      </div>
+
+      {/* Экспериментальные модули Dev-ветки (Регистрация/Вход и Статистика смен — раскрываются только по секретному коду 79293664010) */}
       {isDevBranchMode && (
         <>
+          <SupervisorAccessModal
+            isOpen={!supervisorSession || isSupervisorModalOpen}
+            requireAuth={!supervisorSession}
+            onClose={() => setIsSupervisorModalOpen(false)}
+            activeSession={supervisorSession}
+            onSecretDevCode={toggleDevBranchMode}
+            onLoginSuccess={(acc) => {
+              setSupervisorSession(acc);
+              setSettings(loadSettingsFromStorage());
+              try {
+                setIsSavedTableExpanded(localStorage.getItem('mts_saved_table_expanded') === 'true');
+                setIsDevBranchMode(localStorage.getItem('mts_urm_dev_branch_mode') === 'true');
+              } catch {
+                // ignore
+              }
+            }}
+            onLogout={() => {
+              if (supervisorSession) {
+                savePersonalSettingsSnapshotForUser(supervisorSession.login);
+              }
+              saveActiveAccountSession(null);
+              setSupervisorSession(null);
+            }}
+          />
+
           <BookWorkspaceModal
             isOpen={isBookWindowOpen}
             onClose={() => setIsBookWindowOpen(false)}
@@ -2538,21 +3026,6 @@ export default function App() {
             onDeleteRecord={handleDeleteShiftHistoryRecord}
             onReturnSharedLeadToQueue={handleReturnSentLeadToOwnQueue}
           />
-
-          <div className="fixed inset-0 z-40 pointer-events-none mts-3d-stage">
-            <div
-              className={`w-full h-full mts-3d-rotator mts-3d-face-front ${
-                isPageFlipped
-                  ? 'mts-3d-rotator-back pointer-events-none'
-                  : 'mts-3d-rotator-front'
-              }`}
-            >
-              <EdgeQuickDock
-                onOpenBook={() => setIsBookWindowOpen((prev) => !prev)}
-                animationMode={settings.pearlAnimationMode || 'auto'}
-              />
-            </div>
-          </div>
         </>
       )}
 

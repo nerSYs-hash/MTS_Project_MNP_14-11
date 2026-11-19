@@ -202,7 +202,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                           : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
                       }`}
                     >
-                      {cat.title} ({counts[cat.id]})
+                      {cat.title}
                     </button>
                   );
                 })}

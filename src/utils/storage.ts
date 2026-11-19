@@ -358,7 +358,25 @@ export function generateShiftReportText(stats: ShiftStats, leads: ClientLead[]):
   const autoCount = activeLeads.filter(isAutoLead).length;
   const clientAgreedCount = activeLeads.filter((l) => !isAutoLead(l)).length;
 
+  let accountInfoLine = '';
+  try {
+    const rawAcc = typeof window !== 'undefined' ? localStorage.getItem('mts_urm_active_account_session_v1') : null;
+    if (rawAcc) {
+      const acc = JSON.parse(rawAcc);
+      if (acc && acc.login) {
+        const namePart = acc.fullName && acc.fullName !== acc.login ? `${acc.fullName} (${acc.login})` : acc.login;
+        const leaderPart = acc.groupLeaderName ? ` • ВС / РГ: ${acc.groupLeaderName}` : '';
+        accountInfoLine = `Сотрудник: ${namePart}${leaderPart}\n`;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   let text = `📊 ОТЧЁТ О СМЕНЕ: ГРУППА СОХРАНЕНИЯ КЛИЕНТОВ МТС (MNP)\n`;
+  if (accountInfoLine) {
+    text += accountInfoLine;
+  }
   text += `Дата смены: ${dateStr} (в работе: ~${durationHours} ч.)\n`;
   text += `--------------------------------------------------\n`;
   text += `• Сохранено клиентов: ${stats.savedCount}\n`;

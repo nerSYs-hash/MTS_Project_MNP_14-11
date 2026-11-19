@@ -177,7 +177,7 @@ export function sendDesktopNotification(
     console.warn('Toast dispatch error:', e);
   }
 
-  // 2. Если запущено в среде Electron (десктопная версия УРМ)
+  // 2. Если запущено в среде Electron (десктопная версия)
   const electronAPI = (window as unknown as { electronAPI?: { showNotification?: (t: string, b: string) => void } }).electronAPI;
   const descriptiveBody = `Номер: ${phoneVal || '—'}\nПопытка: ${attemptVal}/${maxAttemptsVal}\nРегион: ${regionVal || 'РФ'}`;
   if (electronAPI && typeof electronAPI.showNotification === 'function') {

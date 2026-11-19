@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Copy, ExternalLink, Check, ChevronDown } from 'lucide-react';
+import { Copy, ExternalLink, Check, ChevronDown } from 'lucide-react';
 import { ClientLead } from '../types';
 
 interface UrgentAlertBannerProps {
@@ -21,9 +21,6 @@ export const UrgentAlertBanner: React.FC<UrgentAlertBannerProps> = ({
     <div className="bg-white border border-[#E2E8F0] rounded-3xl p-4 sm:p-5 shadow-mts-card transition-all animate-in fade-in duration-300">
       <div className="flex items-center justify-between gap-3 pb-3 border-b border-[#F1F3F5]">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-red-50 text-[#E30613] flex items-center justify-center shrink-0">
-            <Bell className="w-4 h-4" />
-          </div>
           <h3 className="text-sm sm:text-base font-extrabold text-[#1D2023] leading-tight font-mts-extended">
             Требуется исходящий вызов
           </h3>

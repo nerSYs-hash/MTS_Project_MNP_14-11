@@ -22,14 +22,17 @@ export default defineConfig(({ command }) => {
               const lookupName = fileName === 'update.asar' ? 'app.asar' : fileName;
               const rootDir = import.meta.dirname || process.cwd();
               const possiblePaths = [
+                path.resolve(rootDir, 'dist', fileName),
                 path.resolve(rootDir, 'public', fileName),
                 path.resolve(rootDir, fileName),
+                path.resolve(rootDir, 'dist', lookupName),
                 path.resolve(rootDir, 'public', lookupName),
                 path.resolve(rootDir, lookupName),
               ];
               for (const p of possiblePaths) {
                 if (fs.existsSync(p)) {
                   const stat = fs.statSync(p);
+                  res.setHeader('Access-Control-Allow-Origin', '*');
                   res.setHeader('Content-Type', 'application/octet-stream');
                   res.setHeader('Content-Length', String(stat.size));
                   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -80,6 +83,7 @@ export default defineConfig(({ command }) => {
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+          globIgnores: ['**/*.asar', '**/*.mtsupdate', '**/*.zip'],
           navigateFallbackDenylist: [/\.(asar|mtsupdate|zip)$/i],
         },
         devOptions: {

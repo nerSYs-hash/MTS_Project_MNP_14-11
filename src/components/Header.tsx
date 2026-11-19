@@ -10,10 +10,11 @@ import {
   User,
   LogIn,
   LogOut,
-  CheckCircle2,
+  Download,
 } from 'lucide-react';
 import { TimerSettings } from '../types';
 import { SupervisorAccount } from './SupervisorAccessModal';
+import { downloadAsarFile } from '../utils/updateManager';
 
 interface HeaderProps {
   localTimeStr: string;
@@ -63,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   // Выпадающее меню «Аккаунт»
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -297,7 +299,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenGuide}
-              title="Руководство оператора (Гайд по функциям УРМ)"
+              title="Руководство оператора"
               className="w-10 h-10 rounded-2xl bg-[#F4F5F7] hover:bg-red-50 hover:text-[#E30613] text-[#1D2023] flex items-center justify-center transition-colors cursor-pointer"
             >
               <BookOpen className="w-5 h-5" />
@@ -316,150 +318,197 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* 4. Кнопка «Аккаунт» (значок человека) с выпадающим меню: Вход/Регистрация, Звук и Настройки */}
-          <div ref={accountMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setIsAccountMenuOpen((prev) => !prev)}
-              title={
-                activeAccount
-                  ? `Аккаунт: ${activeAccount.fullName || activeAccount.login}`
-                  : 'Меню аккаунта (Вход, Звук, Настройки)'
-              }
-              aria-label="Аккаунт"
-              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors cursor-pointer relative ${
-                isAccountMenuOpen
-                  ? 'bg-[#1D2023] text-white'
-                  : 'bg-[#F4F5F7] hover:bg-gray-200 text-[#1D2023]'
-              }`}
-            >
-              <User className="w-5 h-5" />
-              {activeAccount && (
-                <span className="w-2.5 h-2.5 rounded-full bg-[#109E59] absolute -top-0.5 -right-0.5 ring-2 ring-white" />
-              )}
-            </button>
+          {isDevMode ? (
+            /* 4 (Dev-ветка). Кнопка «Аккаунт» (значок человека) с выпадающим меню: Вход/Регистрация, Звук и Настройки */
+            <div ref={accountMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsAccountMenuOpen((prev) => !prev)}
+                title={
+                  activeAccount
+                    ? `Аккаунт: ${activeAccount.fullName || activeAccount.login}`
+                    : 'Меню аккаунта (Вход, Звук, Настройки)'
+                }
+                aria-label="Аккаунт"
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors cursor-pointer relative ${
+                  isAccountMenuOpen
+                    ? 'bg-[#1D2023] text-white'
+                    : 'bg-[#F4F5F7] hover:bg-gray-200 text-[#1D2023]'
+                }`}
+              >
+                <User className="w-5 h-5" />
+              </button>
 
-            {isAccountMenuOpen && (
-              <div className="absolute right-0 top-12 z-50 w-68 bg-white rounded-3xl border border-[#EBECEF] shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 font-mts-compact">
-                {/* 1. Блок Входа / Регистрации или активного профиля */}
-                {activeAccount ? (
-                  <div className="p-3 mb-1.5 rounded-2xl bg-[#F8F9FB] border border-[#EBECEF]">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                        <CheckCircle2 className="w-4 h-4" />
-                      </div>
+              {isAccountMenuOpen && (
+                <div className="absolute right-0 top-12 z-50 w-68 bg-white rounded-3xl border border-[#EBECEF] shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 font-mts-compact">
+                  {/* 1. Блок Входа / Регистрации или активного профиля */}
+                  {activeAccount ? (
+                    <div className="p-3 mb-1.5 rounded-2xl bg-[#F8F9FB] border border-[#EBECEF] flex items-center justify-between gap-2.5">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-bold text-[#1D2023] truncate">
                           {activeAccount.fullName || activeAccount.login}
                         </div>
                         <div className="text-[11px] text-[#626C77] truncate">
                           Логин: {activeAccount.login}
+                          {activeAccount.groupLeaderName
+                            ? ` • РГ: ${activeAccount.groupLeaderName}`
+                            : ''}
                         </div>
                       </div>
-                    </div>
-                    <div className="mt-2.5 pt-2 border-t border-[#EBECEF] flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAccountMenuOpen(false);
-                          onOpenAccountModal?.();
-                        }}
-                        className="text-[11px] font-bold text-[#1D2023] hover:text-[#E30613] transition-colors cursor-pointer"
-                      >
-                        Профиль / Сменить
-                      </button>
                       <button
                         type="button"
                         onClick={() => {
                           setIsAccountMenuOpen(false);
                           onLogoutAccount?.();
                         }}
-                        className="text-[11px] font-bold text-[#E30613] hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Выйти из аккаунта"
+                        className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#EBECEF] text-[#626C77] hover:text-[#1D2023] border border-[#EBECEF] text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                       >
                         <LogOut className="w-3 h-3" />
                         <span>Выйти</span>
                       </button>
                     </div>
-                  </div>
-                ) : (
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAccountMenuOpen(false);
+                        onOpenAccountModal?.();
+                      }}
+                      className="w-full px-3.5 py-2.5 mb-1 rounded-2xl bg-[#F8F9FB] hover:bg-[#F2F3F7] border border-[#EBECEF] flex items-center justify-between gap-3 text-left transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#F4F5F7] text-[#1D2023] flex items-center justify-center shrink-0">
+                          <LogIn className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-bold text-[#1D2023]">
+                            Вход / Регистрация
+                          </div>
+                          <div className="text-[11px] text-[#626C77]">
+                            Войти в свой профиль
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* 2. Звук уведомлений */}
+                  <button
+                    type="button"
+                    onClick={onToggleSound}
+                    className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-[#F5F6F8] flex items-center justify-between gap-3 text-left transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          settings.soundEnabled
+                            ? 'bg-[#F4F5F7] text-[#1D2023]'
+                            : 'bg-[#F4F5F7] text-[#626C77]'
+                        }`}
+                      >
+                        {settings.soundEnabled ? (
+                          <Volume2 className="w-4 h-4" />
+                        ) : (
+                          <VolumeX className="w-4 h-4" />
+                        )}
+                      </span>
+                      <span className="text-[13px] font-semibold text-[#1D2023]">
+                        Звук
+                      </span>
+                    </div>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        settings.soundEnabled
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-[#F4F5F7] text-[#626C77]'
+                      }`}
+                    >
+                      {settings.soundEnabled ? 'Вкл' : 'Выкл'}
+                    </span>
+                  </button>
+
+                  {/* 3. Настройки */}
                   <button
                     type="button"
                     onClick={() => {
                       setIsAccountMenuOpen(false);
-                      onOpenAccountModal?.();
+                      onOpenSettings();
                     }}
-                    className="w-full px-3.5 py-2.5 mb-1 rounded-2xl bg-[#F8F9FB] hover:bg-[#F2F3F7] border border-[#EBECEF] flex items-center justify-between gap-3 text-left transition-colors cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-[#F5F6F8] flex items-center gap-3 text-left transition-colors cursor-pointer"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-red-50 text-[#E30613] flex items-center justify-center shrink-0">
-                        <LogIn className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-bold text-[#1D2023]">
-                          Вход / Регистрация
-                        </div>
-                        <div className="text-[11px] text-[#626C77]">
-                          Войти в свой профиль УРМ
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                )}
-
-                {/* 2. Звук уведомлений */}
-                <button
-                  type="button"
-                  onClick={onToggleSound}
-                  className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-[#F5F6F8] flex items-center justify-between gap-3 text-left transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                        settings.soundEnabled
-                          ? 'bg-[#F4F5F7] text-[#1D2023]'
-                          : 'bg-red-50 text-[#E30613]'
-                      }`}
-                    >
-                      {settings.soundEnabled ? (
-                        <Volume2 className="w-4 h-4" />
-                      ) : (
-                        <VolumeX className="w-4 h-4" />
-                      )}
+                    <span className="w-8 h-8 rounded-xl bg-[#F4F5F7] text-[#1D2023] flex items-center justify-center shrink-0">
+                      <Settings className="w-4 h-4" />
                     </span>
                     <span className="text-[13px] font-semibold text-[#1D2023]">
-                      Звук
+                      Настройки
                     </span>
-                  </div>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                      settings.soundEnabled
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-rose-50 text-[#E30613]'
-                    }`}
-                  >
-                    {settings.soundEnabled ? 'Вкл' : 'Выкл'}
-                  </span>
-                </button>
+                  </button>
 
-                {/* 3. Настройки */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAccountMenuOpen(false);
-                    onOpenSettings();
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-[#F5F6F8] flex items-center gap-3 text-left transition-colors cursor-pointer"
-                >
-                  <span className="w-8 h-8 rounded-xl bg-[#F4F5F7] text-[#1D2023] flex items-center justify-center shrink-0">
-                    <Settings className="w-4 h-4" />
-                  </span>
-                  <span className="text-[13px] font-semibold text-[#1D2023]">
-                    Настройки
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+                  {/* 4. Быстрое скачивание пакета обновления update.asar (2.1 МБ) */}
+                  <div className="mt-1 pt-1 border-t border-[#F1F3F5]">
+                    <button
+                      type="button"
+                      disabled={isDownloadingUpdate}
+                      onClick={async () => {
+                        setIsDownloadingUpdate(true);
+                        try {
+                          await downloadAsarFile('update.asar');
+                          setIsAccountMenuOpen(false);
+                        } catch (err) {
+                          console.error('Ошибка скачивания update.asar:', err);
+                        } finally {
+                          setIsDownloadingUpdate(false);
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-2xl hover:bg-[#F5F6F8] flex items-center justify-between gap-3 text-left transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-8 h-8 rounded-xl bg-[#F4F5F7] text-[#1D2023] flex items-center justify-center shrink-0">
+                          <Download className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <div className="text-[13px] font-semibold text-[#1D2023]">
+                            {isDownloadingUpdate ? 'Загрузка (2.1 МБ)...' : 'Скачать update.asar'}
+                          </div>
+                          <div className="text-[10px] text-[#626C77]">
+                            Полный пакет обновления (2.1 МБ)
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Основная релизная ветка: прямые кнопки Звука и Настроек (без входа и регистрации) */
+            <>
+              <button
+                type="button"
+                onClick={onToggleSound}
+                title={settings.soundEnabled ? 'Звук уведомлений включен' : 'Звук уведомлений выключен'}
+                aria-label="Звук"
+                className="w-10 h-10 rounded-2xl bg-[#F4F5F7] hover:bg-gray-200 text-[#1D2023] flex items-center justify-center transition-colors cursor-pointer"
+              >
+                {settings.soundEnabled ? (
+                  <Volume2 className="w-5 h-5 text-[#1D2023]" />
+                ) : (
+                  <VolumeX className="w-5 h-5 text-[#626C77]" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                title="Настройки"
+                aria-label="Настройки"
+                className="w-10 h-10 rounded-2xl bg-[#F4F5F7] hover:bg-gray-200 text-[#1D2023] flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <Settings className="w-5 h-5 text-[#1D2023]" />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>

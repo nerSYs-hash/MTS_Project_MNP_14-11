@@ -54,6 +54,20 @@ export interface ShiftStats {
   shiftStartTime: number;
   savedWithoutTpChange?: number; // Сохранен без смены ТП
   savedWithEi?: number;          // ЕИ (Единичный Инцидент)
+  readyTimeSeconds?: number;     // Время Ready в линии в секундах (формат ЧЧ:ММ:СС)
+}
+
+export type KalkaTargetAction = 'calls' | 'saved' | 'timer';
+
+export type KalkaDisplayMode = 'setup' | 'transparent' | 'off';
+
+export interface KalkaZoneItem {
+  id: string;
+  target: KalkaTargetAction;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export type PushNotificationPosition =
@@ -65,6 +79,7 @@ export type PushNotificationPosition =
 
 export type PearlAnimationMode =
   | 'auto'
+  | 'off'
   | 'loop_horiz_spin'
   | 'loop_multi_orbits'
   | 'loop_flight';
@@ -131,8 +146,8 @@ export interface ShiftHistoryRecord {
   sharePendingColleague?: boolean; // Ожидает ли переданный номер обработки от коллеги (Б.1)
   creditedByColleagueReceipt?: boolean; // Защита от повторного начисления KPI при досылке полного бокса (Б.1)
   sharedLeadSnapshot?: Partial<ClientLead>; // Снимок карточки для мгновенного возврата в очередь в 1 клик (Б.1)
-  operatorId?: string;        // Логин сотрудника в УРМ (например, kiklimenko)
-  operatorName?: string;      // Имя / Фамилия сотрудника в УРМ
+  operatorId?: string;        // Логин сотрудника (например, iivanov)
+  operatorName?: string;      // Имя / Фамилия сотрудника
   groupLeaderName?: string;   // Руководитель группы (РГ / ВС)
   date: string;       // Формат ДД.ММ.ГГГГ, например 06.11.2026
   time: string;       // Формат ЧЧ:ММ, например 13:05
@@ -141,6 +156,7 @@ export interface ShiftHistoryRecord {
   link: string;       // Ссылка из карточки клиента
   city: string;       // Город из карточки клиента
   notes: string;      // Заметка из карточки клиента
+  readyTimeSeconds?: number; // Накопленное время Ready (сек) для отображения ЧЧ:ММ:СС
   timestamp: number;
 }
 

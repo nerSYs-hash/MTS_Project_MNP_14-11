@@ -21,8 +21,17 @@ export interface UrmEmployeeStatPackage {
     savedCount: number;
     refusedCount: number;
     unreachableCount: number;
+    readyTimeSeconds?: number;
   };
   records: ShiftHistoryRecord[];
+}
+
+export function formatSecondsToHms(totalSeconds: number | undefined | null): string {
+  const safeSec = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(safeSec / 3600);
+  const minutes = Math.floor((safeSec % 3600) / 60);
+  const seconds = safeSec % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 export interface UrmEmployeeSummary {
@@ -41,7 +50,104 @@ export interface UrmEmployeeSummary {
   recordsCount: number;
 }
 
+export interface ConversionThresholdScale {
+  tolerance: number;
+  target: number;
+  aggression: number;
+}
+
+export interface EmployeeKpiOverride {
+  monthlyPlan: number;
+  isTrainee: boolean;
+}
+
+export interface GroupKpiTargetsConfig {
+  regular: ConversionThresholdScale;
+  trainee: ConversionThresholdScale;
+  defaultMonthlyPlan: number;
+  employees: Record<string, EmployeeKpiOverride>;
+}
+
 const STORAGE_URM_SYNC_CONFIG_KEY = 'mts_urm_stat_sync_config_v1';
+export const STORAGE_GROUP_KPI_TARGETS_KEY = 'mts_group_kpi_targets_v1';
+
+export const BUILTIN_SAMPLE_EMPLOYEES_OVERRIDES: Record<string, EmployeeKpiOverride> = {
+  usmanova: { monthlyPlan: 216, isTrainee: false },
+  aliullin: { monthlyPlan: 222, isTrainee: false },
+  bespalova: { monthlyPlan: 193, isTrainee: false },
+  navlyutova: { monthlyPlan: 400, isTrainee: false },
+  polyanskaya: { monthlyPlan: 200, isTrainee: true },
+  chadaev: { monthlyPlan: 484, isTrainee: false },
+  dankin: { monthlyPlan: 484, isTrainee: false },
+  sidorov: { monthlyPlan: 485, isTrainee: false },
+  desyatnikova: { monthlyPlan: 220, isTrainee: true },
+  klimenko: { monthlyPlan: 421, isTrainee: false },
+  arhireev: { monthlyPlan: 391, isTrainee: false },
+  dobychina: { monthlyPlan: 244, isTrainee: false },
+  polkanov: { monthlyPlan: 489, isTrainee: false },
+  bakunov: { monthlyPlan: 488, isTrainee: false },
+  sankovskaya: { monthlyPlan: 490, isTrainee: false },
+  novotorzhentsev: { monthlyPlan: 236, isTrainee: true },
+  vahitova: { monthlyPlan: 359, isTrainee: false },
+  antonova: { monthlyPlan: 480, isTrainee: false },
+};
+
+export const DEFAULT_GROUP_KPI_TARGETS: GroupKpiTargetsConfig = {
+  regular: {
+    tolerance: 40,
+    target: 44,
+    aggression: 52,
+  },
+  trainee: {
+    tolerance: 32,
+    target: 40,
+    aggression: 46,
+  },
+  defaultMonthlyPlan: 400,
+  employees: { ...BUILTIN_SAMPLE_EMPLOYEES_OVERRIDES },
+};
+
+export function loadGroupKpiTargets(): GroupKpiTargetsConfig {
+  try {
+    const raw = localStorage.getItem(STORAGE_GROUP_KPI_TARGETS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        regular: {
+          ...DEFAULT_GROUP_KPI_TARGETS.regular,
+          ...(parsed.regular || {}),
+        },
+        trainee: {
+          ...DEFAULT_GROUP_KPI_TARGETS.trainee,
+          ...(parsed.trainee || {}),
+        },
+        defaultMonthlyPlan:
+          typeof parsed.defaultMonthlyPlan === 'number' && parsed.defaultMonthlyPlan > 0
+            ? parsed.defaultMonthlyPlan
+            : DEFAULT_GROUP_KPI_TARGETS.defaultMonthlyPlan,
+        employees: {
+          ...BUILTIN_SAMPLE_EMPLOYEES_OVERRIDES,
+          ...(parsed.employees && typeof parsed.employees === 'object' ? parsed.employees : {}),
+        },
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    ...DEFAULT_GROUP_KPI_TARGETS,
+    employees: { ...BUILTIN_SAMPLE_EMPLOYEES_OVERRIDES },
+  };
+}
+
+export function saveGroupKpiTargets(config: GroupKpiTargetsConfig): void {
+  try {
+    localStorage.setItem(STORAGE_GROUP_KPI_TARGETS_KEY, JSON.stringify(config));
+  } catch {
+    // ignore
+  }
+}
+
 const IDB_NAME = 'mts_urm_fs_sync_db_v1';
 const IDB_STORE = 'dir_handles';
 const IDB_DIR_KEY = 'active_urm_stats_dir';
@@ -84,7 +190,7 @@ export function loadUrmSyncConfig(): UrmSyncConfig {
     operatorName: '',
     groupLeaderName: '',
     networkFolderPath: '\\\\msk.mts.ru\\MSK\\User\\Folders\\Homes\\iivanov.ADMSK\\MSK_Stats',
-    isSupervisorReader: false,
+    isSupervisorReader: true,
   };
   try {
     const raw = localStorage.getItem(STORAGE_URM_SYNC_CONFIG_KEY);
@@ -104,6 +210,12 @@ export function loadUrmSyncConfig(): UrmSyncConfig {
 export function saveUrmSyncConfig(config: UrmSyncConfig): void {
   try {
     localStorage.setItem(STORAGE_URM_SYNC_CONFIG_KEY, JSON.stringify(config));
+    if (config.operatorId) {
+      const key = `mts_user_personal_prefs_v1_${config.operatorId.trim().toLowerCase()}`;
+      const existing = JSON.parse(localStorage.getItem(key) || '{}');
+      existing[STORAGE_URM_SYNC_CONFIG_KEY] = JSON.stringify(config);
+      localStorage.setItem(key, JSON.stringify(existing));
+    }
     window.dispatchEvent(new CustomEvent('mts-urm-sync-config-changed', { detail: config }));
   } catch {
     // ignore
@@ -324,7 +436,7 @@ function formatTodayDateRu(): string {
 }
 
 /**
- * Бесконтактная фоновая отправка статистики сотрудника в сетевую папку УРМ
+ * Бесконтактная фоновая отправка статистики сотрудника в сетевую папку группы
  */
 export async function pushEmployeeStatsToUrmFolder(
   records: ShiftHistoryRecord[],
@@ -339,7 +451,7 @@ export async function pushEmployeeStatsToUrmFolder(
   const operatorName = (config.operatorName || config.operatorId || '').trim();
   const operatorId = sanitizeFileId(config.operatorId || operatorName || 'operator');
   if (!operatorName) {
-    return { ok: false, error: 'Укажите ваше имя или логин УРМ в настройках синхронизации' };
+    return { ok: false, error: 'Войдите в свой профиль в шапке для синхронизации статистики' };
   }
 
   const fileName = `stat_${operatorId}.mtsstat`;
@@ -362,6 +474,7 @@ export async function pushEmployeeStatsToUrmFolder(
       savedCount: stats.savedCount || 0,
       refusedCount: stats.refusedCount || 0,
       unreachableCount: stats.unreachableCount || 0,
+      readyTimeSeconds: stats.readyTimeSeconds || 0,
     },
     records: taggedRecords,
   };

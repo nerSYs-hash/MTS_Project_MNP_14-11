@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, PhoneCall, Share2, Check, Copy, X } from 'lucide-react';
+import { Share2, Copy } from 'lucide-react';
 import { ClientLead, CallStatus } from '../types';
 import { ClientCard } from './ClientCard';
 import {
@@ -317,7 +317,6 @@ export const ClientQueue: React.FC<ClientQueueProps> = ({
             </button>
 
             <div className="relative min-w-[210px] flex-1">
-              <Search className="w-4 h-4 text-[#8C95A0] absolute left-3.5 top-3" />
               <input
                 type="text"
                 placeholder="Поиск по номеру, городу..."
@@ -326,7 +325,7 @@ export const ClientQueue: React.FC<ClientQueueProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') e.currentTarget.blur();
                 }}
-                className="w-full h-10 pl-9 pr-3.5 rounded-xl border border-[#D5D8DD] focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30 focus:outline-none text-xs text-[#1D2023] bg-white placeholder-[#8C95A0]"
+                className="w-full h-10 px-3.5 rounded-xl border border-[#D5D8DD] focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30 focus:outline-none text-xs text-[#1D2023] bg-white placeholder-[#8C95A0]"
               />
             </div>
           </div>
@@ -386,9 +385,6 @@ export const ClientQueue: React.FC<ClientQueueProps> = ({
         </div>
       ) : (
         <div className="bg-white rounded-3xl p-10 border border-[#F1F3F5] shadow-mts-card text-center">
-          <div className="w-14 h-14 rounded-2xl bg-[#F4F5F7] text-[#626C77] flex items-center justify-center mx-auto mb-3">
-            <PhoneCall className="w-6 h-6 text-[#8C95A0]" />
-          </div>
           <h3 className="text-base font-bold text-[#1D2023]">В этой вкладке пока нет заявок</h3>
           <p className="text-xs text-[#626C77] font-normal mt-1 max-w-md mx-auto">
             {searchQuery

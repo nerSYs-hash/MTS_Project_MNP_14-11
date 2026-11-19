@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserCheck, PhoneCall, TrendingUp, Timer, Plus, Minus, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Minus, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { ShiftStats } from '../types';
 import { formatContactsCount, formatSubscribersCount } from '../utils/pluralize';
 
@@ -65,9 +65,6 @@ export const KpiDashboard: React.FC<KpiDashboardProps> = ({
           <span className="text-[11px] font-bold text-[#626C77] uppercase tracking-wider">
             Звонки
           </span>
-          <div className="w-9 h-9 rounded-full bg-blue-50 text-[#0077FF] flex items-center justify-center shrink-0">
-            <PhoneCall className="w-4.5 h-4.5" />
-          </div>
         </div>
 
         <div className="flex items-center justify-between">
@@ -121,9 +118,6 @@ export const KpiDashboard: React.FC<KpiDashboardProps> = ({
           <span className="text-[11px] font-bold text-[#626C77] uppercase tracking-wider">
             Сохранение
           </span>
-          <div className="w-9 h-9 rounded-full bg-[#E8F8EF] text-[#00B956] flex items-center justify-center shrink-0">
-            <UserCheck className="w-4.5 h-4.5" />
-          </div>
         </div>
 
         <div className="flex items-center justify-between">
@@ -272,9 +266,6 @@ export const KpiDashboard: React.FC<KpiDashboardProps> = ({
           <span className="text-[11px] font-bold text-[#626C77] uppercase tracking-wider">
             Конверсия
           </span>
-          <div className="w-9 h-9 rounded-full bg-[#FFF0F2] text-[#FF0023] flex items-center justify-center">
-            <TrendingUp className="w-4.5 h-4.5" />
-          </div>
         </div>
 
         <div className="flex items-baseline gap-2">
@@ -326,17 +317,6 @@ export const KpiDashboard: React.FC<KpiDashboardProps> = ({
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Иконка часов */}
-          <div
-            className={`w-9 h-9 rounded-full flex items-center justify-center ${
-              dueTimersCount > 0
-                ? 'bg-amber-50 text-amber-700'
-                : 'bg-gray-100 text-[#1D2023]'
-            }`}
-          >
-            <Timer className="w-5 h-5" />
           </div>
         </div>
 

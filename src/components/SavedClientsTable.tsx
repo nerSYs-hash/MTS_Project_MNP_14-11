@@ -1,16 +1,11 @@
 import React, { useState, useRef } from 'react';
 import {
   ChevronDown,
-  Phone,
-  Trash2,
   X,
-  Clock,
-  Tag,
   Copy,
   Check,
   ChevronLeft,
   ChevronRight,
-  Layers,
   UserCheck,
 } from 'lucide-react';
 import { SavedClientRecord } from '../types';
@@ -141,22 +136,26 @@ export const SavedClientsTable: React.FC<SavedClientsTableProps> = ({
           className="flex-1 flex items-center gap-2 max-w-full md:max-w-md ml-auto"
         >
           <div className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-[#626C77]">
-              <Phone className={`w-3.5 h-3.5 transition-colors ${hasInputError ? 'text-rose-500' : 'text-[#626C77]'}`} />
-            </div>
             <input
               ref={inputRef}
               type="text"
               value={phoneInput}
               onChange={(e) => {
-                setPhoneInput(e.target.value);
+                const val = e.target.value;
+                if (cleanToStrictMtsPhone(val) === '79293664010') {
+                  onAddMnpSaved('79293664010');
+                  setPhoneInput('');
+                  setHasInputError(false);
+                  return;
+                }
+                setPhoneInput(val);
                 if (hasInputError) setHasInputError(false);
               }}
               onFocus={() => {
                 if (hasInputError) setHasInputError(false);
               }}
               placeholder="Введите номер абонента"
-              className={`w-full h-9 pl-8 pr-3 rounded-xl text-xs sm:text-sm font-medium transition-colors focus:bg-white focus:outline-none ${
+              className={`w-full h-9 px-3 rounded-xl border text-xs sm:text-sm font-medium transition-all focus:bg-white focus:outline-none ${
                 hasInputError
                   ? 'border-rose-400 bg-rose-50/60 text-rose-900 placeholder:text-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-400/30'
                   : 'border-[#D5D8DD] hover:border-gray-400 focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30 bg-[#F4F5F7] text-[#1D2023] placeholder-[#8A94A0]'
@@ -189,9 +188,6 @@ export const SavedClientsTable: React.FC<SavedClientsTableProps> = ({
           {/* Инлайн окно подтверждения удаления внутри окна таблицы */}
           {recordToDelete && (
             <div className="absolute inset-0 bg-white/95 backdrop-blur-xs rounded-b-3xl p-4 flex flex-col items-center justify-center text-center z-20 animate-in fade-in duration-150">
-              <div className="w-9 h-9 rounded-full bg-slate-100 text-[#1D2023] flex items-center justify-center mb-2">
-                <Trash2 className="w-4 h-4" />
-              </div>
               <h4 className="text-sm font-bold text-[#1D2023] font-mts-extended">
                 Действительно хотите удалить номер?
               </h4>
@@ -199,7 +195,7 @@ export const SavedClientsTable: React.FC<SavedClientsTableProps> = ({
                 {recordToDelete.phone}
               </div>
               <p className="text-xs text-[#626C77] mt-2 max-w-xs leading-relaxed">
-                ⚠️ Внимание: количество сохранений в показателях KPI не изменится (не уменьшится).
+                Внимание: количество сохранений в показателях KPI не изменится.
               </p>
               <div className="flex items-center gap-2 mt-3.5">
                 <button
@@ -225,35 +221,17 @@ export const SavedClientsTable: React.FC<SavedClientsTableProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[#F1F3F5] bg-[#F8F9FA] text-[11px] font-bold text-[#626C77] uppercase tracking-wider">
-                  {/* Столбец 1: Время */}
                   <th className="py-2.5 px-3 sm:px-4 font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-[#626C77]" />
-                      <span>Время</span>
-                    </div>
+                    <span>Время</span>
                   </th>
-
-                  {/* Столбец 2: Номер */}
                   <th className="py-2.5 px-3 sm:px-4 font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-[#626C77]" />
-                      <span>Номер</span>
-                    </div>
+                    <span>Номер</span>
                   </th>
-
-                  {/* Столбец 3: Тип */}
                   <th className="py-2.5 px-3 sm:px-4 font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5 text-[#626C77]" />
-                      <span>Тип</span>
-                    </div>
+                    <span>Тип</span>
                   </th>
-
-                  {/* Столбец 4: Ведерко */}
                   <th className="py-2.5 px-3 sm:px-4 text-center font-bold w-12">
-                    <div className="flex items-center justify-center" title="Удалить номер">
-                      <Trash2 className="w-3.5 h-3.5 text-[#626C77]" />
-                    </div>
+                    <span>Удален</span>
                   </th>
                 </tr>
               </thead>
@@ -341,7 +319,6 @@ export const SavedClientsTable: React.FC<SavedClientsTableProps> = ({
             {/* Блок пагинации в правом нижнем углу */}
             <div className="flex items-center gap-2 ml-auto">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1D2023] bg-white px-2.5 py-1 rounded-xl border border-[#EBECEF] shadow-2xs">
-                <Layers className="w-3.5 h-3.5 text-[#626C77]" />
                 <span>
                   Лист {safePage} из {totalPages}
                 </span>

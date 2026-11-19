@@ -19,24 +19,28 @@ import {
   ArrowDownLeft,
   RotateCcw,
   FolderOpen,
-  Users,
-  RefreshCw,
   Copy,
-  ShieldCheck,
+  ChevronDown,
+  HelpCircle,
+  Wrench,
 } from 'lucide-react';
 import { ShiftHistoryRecord, ShiftStats } from '../types';
 import { INITIAL_SHIFT_HISTORY } from '../utils/storage';
 import {
   UrmSyncConfig,
   UrmEmployeeStatPackage,
+  GroupKpiTargetsConfig,
   loadUrmSyncConfig,
   saveUrmSyncConfig,
+  loadGroupKpiTargets,
+  saveGroupKpiTargets,
   detectOsUsername,
   pickAndConnectUrmFolder,
   getDirectoryHandleFromIdb,
   pushEmployeeStatsToUrmFolder,
   fetchAllDepartmentStatsFromUrmFolder,
   hasNativeUrmIpcBridge,
+  formatSecondsToHms,
 } from '../utils/urmStatSync';
 
 interface BookWorkspaceModalProps {
@@ -53,6 +57,7 @@ type OptionsTab = 'columns' | 'params';
 type ColumnId =
   | 'date'
   | 'time'
+  | 'ready'
   | 'operator'
   | 'phone'
   | 'deleted'
@@ -73,6 +78,264 @@ type ChartMetricId =
   | 'unreachableAuto';
 type MainWorkspaceView = 'table' | 'chart';
 type DataScopeMode = 'own' | 'department';
+type GroupTableMode = 'log' | 'daily_summary' | 'monthly_plan' | 'plans_norm';
+type ConversionKpiLevel = 'aggression' | 'target' | 'tolerance' | 'below';
+
+const KPI_LEVEL_STYLES: Record<
+  ConversionKpiLevel,
+  {
+    cellClass: string;
+    label: string;
+    rank: number;
+  }
+> = {
+  aggression: {
+    cellClass: 'bg-[#4472C4] text-white font-semibold',
+    label: 'Агрессия',
+    rank: 4,
+  },
+  target: {
+    cellClass: 'bg-[#B7E4C7] text-[#0F5132] font-semibold',
+    label: 'Цель',
+    rank: 3,
+  },
+  tolerance: {
+    cellClass: 'bg-[#FFE699] text-[#664D03] font-semibold',
+    label: 'Допуск',
+    rank: 2,
+  },
+  below: {
+    cellClass: 'bg-[#F8BBC4] text-[#7A1424] font-semibold',
+    label: 'Ниже цели',
+    rank: 1,
+  },
+};
+
+function evaluateConversionLevel(
+  conversionPct: number,
+  isTrainee: boolean,
+  targets: GroupKpiTargetsConfig
+): ConversionKpiLevel {
+  const scale = isTrainee ? targets.trainee : targets.regular;
+  if (conversionPct >= scale.aggression) return 'aggression';
+  if (conversionPct >= scale.target) return 'target';
+  if (conversionPct >= scale.tolerance) return 'tolerance';
+  return 'below';
+}
+
+function getPlanCompletionCellClass(planPct: number): string {
+  if (planPct >= 80) return 'bg-[#B7E4C7] text-[#0F5132] font-semibold';
+  if (planPct >= 65) return 'bg-[#FFE699] text-[#664D03] font-semibold';
+  return 'bg-[#F8BBC4] text-[#7A1424] font-semibold';
+}
+
+function formatPctRu(val: number, decimals: number = 1): string {
+  return `${val.toFixed(decimals).replace('.', ',')}%`;
+}
+
+interface BuiltinSampleEmployee {
+  key: string;
+  operatorId: string;
+  operatorName: string;
+  groupLeaderName: string;
+  isTrainee: boolean;
+  monthlyPlan: number;
+  daily: {
+    processed: number;
+    saved: number;
+    refused: number;
+    readySeconds?: number;
+  };
+  monthly: {
+    processed: number;
+    saved: number;
+    refused: number;
+  };
+}
+
+// Неудаляемый эталонный перечень сотрудников группы (разные уровни конверсии + стажёры в единой таблице)
+const BUILTIN_SAMPLE_EMPLOYEES: BuiltinSampleEmployee[] = [
+  {
+    key: 'usmanova',
+    operatorId: 'usmanova',
+    operatorName: 'Усманова Лилия Ахтямовна',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 216,
+    daily: { processed: 55, saved: 42, refused: 10 }, // 76,4% — Агрессия (Штат)
+    monthly: { processed: 512, saved: 318, refused: 134 }, // План 147%, Конв 62% — Агрессия
+  },
+  {
+    key: 'aliullin',
+    operatorId: 'aliullin',
+    operatorName: 'Алиуллин Рустам Ильнарович',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 222,
+    daily: { processed: 48, saved: 31, refused: 11 }, // 64,6% — Агрессия (Штат)
+    monthly: { processed: 251, saved: 178, refused: 52 }, // План 80%, Конв 71% — Агрессия
+  },
+  {
+    key: 'bespalova',
+    operatorId: 'bespalova',
+    operatorName: 'Беспалова Вера Александровна',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 193,
+    daily: { processed: 52, saved: 29, refused: 14 }, // 55,8% — Агрессия (Штат)
+    monthly: { processed: 321, saved: 199, refused: 84 }, // План 103%, Конв 62% — Агрессия
+  },
+  {
+    key: 'navlyutova',
+    operatorId: 'navlyutova',
+    operatorName: 'Навлютова Алсу Ахтямовна',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 400,
+    daily: { processed: 65, saved: 34, refused: 17 }, // 52,3% — Агрессия (Штат)
+    monthly: { processed: 763, saved: 412, refused: 230 }, // План 103%, Конв 54% — Агрессия
+  },
+  {
+    key: 'polyanskaya',
+    operatorId: 'polyanskaya',
+    operatorName: 'Полянская Полина Алексеевна',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: true,
+    monthlyPlan: 200,
+    daily: { processed: 28, saved: 13, refused: 6 }, // 46,4% — Агрессия по шкале Стажёра (>=46%)
+    monthly: { processed: 412, saved: 196, refused: 128 }, // План 98%, Конв 48% — Агрессия (Стажёр)
+  },
+  {
+    key: 'chadaev',
+    operatorId: 'chadaev',
+    operatorName: 'Чадаев Александр Владимирович',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 484,
+    daily: { processed: 58, saved: 29, refused: 16 }, // 50,0% — Цель (Штат)
+    monthly: { processed: 967, saved: 474, refused: 310 }, // План 98%, Конв 49% — Цель
+  },
+  {
+    key: 'dankin',
+    operatorId: 'dankin',
+    operatorName: 'Данькин Алексей Евгеньевич',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 484,
+    daily: { processed: 66, saved: 31, refused: 15 }, // 47,0% — Цель (Штат)
+    monthly: { processed: 1036, saved: 518, refused: 320 }, // План 107%, Конв 50% — Цель
+  },
+  {
+    key: 'sidorov',
+    operatorId: 'sidorov',
+    operatorName: 'Сидоров Сергей Александрович',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 485,
+    daily: { processed: 60, saved: 27, refused: 21 }, // 45,0% — Цель (Штат)
+    monthly: { processed: 884, saved: 442, refused: 295 }, // План 91%, Конв 50% — Цель
+  },
+  {
+    key: 'desyatnikova',
+    operatorId: 'desyatnikova',
+    operatorName: 'Десятникова Вера Викторовна',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: true,
+    monthlyPlan: 220,
+    daily: { processed: 34, saved: 14, refused: 9 }, // 41,2% — Цель по шкале Стажёра (>=40%)
+    monthly: { processed: 390, saved: 164, refused: 140 }, // План 75%, Конв 42% — Цель (Стажёр)
+  },
+  {
+    key: 'klimenko',
+    operatorId: 'klimenko',
+    operatorName: 'Клименко Кирилл Игоревич',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 421,
+    daily: { processed: 83, saved: 36, refused: 31 }, // 43,4% — Допуск (Штат)
+    monthly: { processed: 1072, saved: 472, refused: 390 }, // План 112%, Конв 44% — Цель
+  },
+  {
+    key: 'arhireev',
+    operatorId: 'arhireev',
+    operatorName: 'Архиреев Станислав Власович',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 391,
+    daily: { processed: 50, saved: 21, refused: 16 }, // 42,0% — Допуск (Штат)
+    monthly: { processed: 633, saved: 266, refused: 240 }, // План 68%, Конв 42% — Допуск
+  },
+  {
+    key: 'dobychina',
+    operatorId: 'dobychina',
+    operatorName: 'Добычина Надежда Анатольевна',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 244,
+    daily: { processed: 42, saved: 17, refused: 16 }, // 40,5% — Допуск (Штат)
+    monthly: { processed: 483, saved: 198, refused: 195 }, // План 81%, Конв 41% — Допуск
+  },
+  {
+    key: 'polkanov',
+    operatorId: 'polkanov',
+    operatorName: 'Полканов Анатолий Николаевич',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 489,
+    daily: { processed: 44, saved: 17, refused: 19 }, // 38,6% — Ниже цели (Штат)
+    monthly: { processed: 952, saved: 362, refused: 410 }, // План 74%, Конв 38% — Ниже цели
+  },
+  {
+    key: 'bakunov',
+    operatorId: 'bakunov',
+    operatorName: 'Бакунов Дмитрий Алексеевич',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 488,
+    daily: { processed: 53, saved: 19, refused: 19 }, // 35,8% — Ниже цели (Штат)
+    monthly: { processed: 1181, saved: 449, refused: 490 }, // План 92%, Конв 38% — Ниже цели
+  },
+  {
+    key: 'novotorzhentsev',
+    operatorId: 'novotorzhentsev',
+    operatorName: 'Новоторженцев Даниил Сергеевич',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: true,
+    monthlyPlan: 236,
+    daily: { processed: 31, saved: 11, refused: 12 }, // 35,5% — Допуск по шкале Стажёра (>=32%)
+    monthly: { processed: 337, saved: 118, refused: 145 }, // План 50%, Конв 35% — Допуск (Стажёр)
+  },
+  {
+    key: 'sankovskaya',
+    operatorId: 'sankovskaya',
+    operatorName: 'Санковская Олеся Сергеевна',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 490,
+    daily: { processed: 73, saved: 26, refused: 36 }, // 35,6% — Ниже цели (Штат)
+    monthly: { processed: 788, saved: 284, refused: 360 }, // План 58%, Конв 36% — Ниже цели
+  },
+  {
+    key: 'vahitova',
+    operatorId: 'vahitova',
+    operatorName: 'Вахитова Эльмира Минивалиевна',
+    groupLeaderName: 'Тарантина Ирина',
+    isTrainee: false,
+    monthlyPlan: 359,
+    daily: { processed: 37, saved: 12, refused: 16 }, // 32,4% — Ниже цели (Штат)
+    monthly: { processed: 688, saved: 248, refused: 310 }, // План 69%, Конв 36% — Ниже цели
+  },
+  {
+    key: 'antonova',
+    operatorId: 'antonova',
+    operatorName: 'Антонова Екатерина Львовна',
+    groupLeaderName: 'Попова Оксана',
+    isTrainee: false,
+    monthlyPlan: 480,
+    daily: { processed: 57, saved: 13, refused: 27 }, // 22,8% — Ниже цели (Штат)
+    monthly: { processed: 612, saved: 202, refused: 290 }, // План 42%, Конв 33% — Ниже цели
+  },
+];
 
 interface ChartDataPoint {
   label: string;
@@ -198,33 +461,35 @@ const TABLE_COLUMNS: {
   maxWidth: number;
   hideSort: boolean;
 }[] = [
-  { id: 'date', label: 'Дата', defaultWidth: 91, minWidth: 36, maxWidth: 180, hideSort: true },
-  { id: 'time', label: 'Время', defaultWidth: 96, minWidth: 60, maxWidth: 260, hideSort: false },
-  { id: 'operator', label: 'Сотрудник', defaultWidth: 150, minWidth: 90, maxWidth: 260, hideSort: false },
-  { id: 'phone', label: 'Номер телефона', defaultWidth: 154, minWidth: 110, maxWidth: 340, hideSort: false },
-  { id: 'deleted', label: 'Уд.', defaultWidth: 44, minWidth: 36, maxWidth: 90, hideSort: true },
-  { id: 'type', label: 'Тип', defaultWidth: 170, minWidth: 90, maxWidth: 280, hideSort: false },
-  { id: 'attempts', label: 'Перезв.', defaultWidth: 68, minWidth: 48, maxWidth: 120, hideSort: false },
-  { id: 'link', label: 'Ссылка', defaultWidth: 290, minWidth: 80, maxWidth: 700, hideSort: false },
-  { id: 'city', label: 'Город', defaultWidth: 200, minWidth: 70, maxWidth: 360, hideSort: false },
-  { id: 'note', label: 'Заметка', defaultWidth: 350, minWidth: 90, maxWidth: 600, hideSort: false },
+  { id: 'date', label: 'Дата', defaultWidth: 56, minWidth: 42, maxWidth: 140, hideSort: true },
+  { id: 'time', label: 'Время', defaultWidth: 78, minWidth: 62, maxWidth: 180, hideSort: false },
+  { id: 'ready', label: 'Реди', defaultWidth: 88, minWidth: 74, maxWidth: 150, hideSort: false },
+  { id: 'operator', label: 'Сотрудник', defaultWidth: 145, minWidth: 95, maxWidth: 260, hideSort: false },
+  { id: 'phone', label: 'Номер телефона', defaultWidth: 142, minWidth: 110, maxWidth: 280, hideSort: false },
+  { id: 'deleted', label: 'Удален', defaultWidth: 74, minWidth: 64, maxWidth: 100, hideSort: true },
+  { id: 'type', label: 'Тип', defaultWidth: 135, minWidth: 95, maxWidth: 240, hideSort: false },
+  { id: 'attempts', label: 'Кол-во попыток', defaultWidth: 118, minWidth: 96, maxWidth: 160, hideSort: false },
+  { id: 'link', label: 'Ссылка', defaultWidth: 230, minWidth: 110, maxWidth: 550, hideSort: false },
+  { id: 'city', label: 'Город', defaultWidth: 135, minWidth: 80, maxWidth: 280, hideSort: false },
+  { id: 'note', label: 'Заметка', defaultWidth: 260, minWidth: 110, maxWidth: 600, hideSort: false },
 ];
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
-  date: 91,
-  time: 96,
-  operator: 150,
-  phone: 154,
-  deleted: 44,
-  type: 170,
-  attempts: 68,
-  link: 290,
-  city: 200,
-  note: 350,
+  date: 56,
+  time: 78,
+  ready: 88,
+  operator: 145,
+  phone: 142,
+  deleted: 74,
+  type: 135,
+  attempts: 118,
+  link: 230,
+  city: 135,
+  note: 260,
 };
 
-const STORAGE_COL_WIDTHS_KEY = 'mts_shift_stats_col_widths_v4';
-const MIN_DISPLAY_ROWS = 8;
+const STORAGE_COL_WIDTHS_KEY = 'mts_shift_stats_col_widths_v7';
+const MIN_DISPLAY_ROWS = 10;
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -285,6 +550,81 @@ function getMonthGridDays(year: number, month: number): (Date | null)[] {
   return cells;
 }
 
+/**
+ * Фирменный выпадающий список в дизайне МТС (без системной синей рамки и без черной обводки)
+ */
+const MtsDropdownSelect: React.FC<{
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (nextValue: string) => void;
+  minWidthClass?: string;
+  ariaLabel?: string;
+}> = ({ value, options, onChange, minWidthClass = 'min-w-[170px]', ariaLabel }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [isOpen]);
+
+  const activeOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div ref={containerRef} className={`relative ${minWidthClass} font-mts-compact`}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full h-9 px-3.5 rounded-xl bg-white hover:bg-[#F2F3F7] border text-xs font-semibold text-[#1D2023] flex items-center justify-between gap-2.5 transition-all cursor-pointer focus:outline-none ${
+          isOpen
+            ? 'border-[#0077FF] ring-1 ring-[#0077FF]/30 bg-white'
+            : 'border-[#D5D8DD] focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30'
+        }`}
+      >
+        <span className="truncate">{activeOption ? activeOption.label : ''}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-[#626C77] shrink-0 transition-transform duration-150 ${
+            isOpen ? 'rotate-180 text-[#1D2023]' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1.5 z-40 w-full min-w-[200px] max-h-60 overflow-y-auto bg-white rounded-2xl border border-[#EBECEF] shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+          {options.map((opt) => {
+            const isSelected = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-2 rounded-xl text-left text-xs transition-colors flex items-center justify-between gap-2 cursor-pointer ${
+                  isSelected
+                    ? 'bg-[#F2F3F7] text-[#1D2023] font-bold'
+                    : 'text-[#1D2023] font-medium hover:bg-[#F8F9FB]'
+                }`}
+              >
+                <span className="truncate">{opt.label}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 text-[#1D2023] shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
   isOpen,
   onClose,
@@ -293,16 +633,26 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
   onDeleteRecord,
   onReturnSharedLeadToQueue,
 }) => {
-  // Поиск в шапке
+  // Поиск в шапке (сворачивается в круглую кнопку-лупу и плавно раскрывается при нажатии)
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
 
   // Чистое переключение «Таблица / График» на весь экран (без жирной черной полосы)
   const [mainView, setMainView] = useState<MainWorkspaceView>('table');
 
-  // Бесконтактная передача и сбор статистики УРМ (Вариант 1 — общая папка у Рустама / РГ)
-  const [urmConfig, setUrmConfig] = useState<UrmSyncConfig>(() => loadUrmSyncConfig());
+  // Бесконтактная передача и сбор статистики группы (общая папка)
+  const [urmConfig, setUrmConfig] = useState<UrmSyncConfig>(() => {
+    const cfg = loadUrmSyncConfig();
+    if (!cfg.isSupervisorReader) {
+      const updated = { ...cfg, isSupervisorReader: true };
+      saveUrmSyncConfig(updated);
+      return updated;
+    }
+    return cfg;
+  });
   const [dataScope, setDataScope] = useState<DataScopeMode>(() =>
     loadUrmSyncConfig().isSupervisorReader ? 'department' : 'own'
   );
@@ -310,12 +660,39 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
   const [departmentRecords, setDepartmentRecords] = useState<ShiftHistoryRecord[]>([]);
   const [selectedOperatorFilter, setSelectedOperatorFilter] = useState<string>('all');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all');
+  const [groupTableMode, setGroupTableMode] = useState<GroupTableMode>('daily_summary');
+  const [groupKpiTargets, setGroupKpiTargets] = useState<GroupKpiTargetsConfig>(() =>
+    loadGroupKpiTargets()
+  );
+  const [dailySortKey, setDailySortKey] = useState<
+    'name' | 'processed' | 'saved' | 'conversion' | 'refusedShare' | 'ready'
+  >('conversion');
+  const [dailySortAsc, setDailySortAsc] = useState<boolean>(false);
+  const [monthlySortKey, setMonthlySortKey] = useState<
+    'name' | 'saved' | 'planPct' | 'conversion' | 'level'
+  >('name');
+  const [monthlySortAsc, setMonthlySortAsc] = useState<boolean>(true);
   const [connectedFolderName, setConnectedFolderName] = useState<string>('');
   const [syncStatusMessage, setSyncStatusMessage] = useState<string>('');
   const [syncErrorMessage, setSyncErrorMessage] = useState<string>('');
   const [isSyncingNow, setIsSyncingNow] = useState<boolean>(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
   const [copiedPathToast, setCopiedPathToast] = useState<boolean>(false);
+
+  const updateAndSaveGroupKpiTargets = (next: GroupKpiTargetsConfig) => {
+    setGroupKpiTargets(next);
+    saveGroupKpiTargets(next);
+    if (urmConfig.operatorId) {
+      try {
+        const key = `mts_user_personal_prefs_v1_${urmConfig.operatorId.trim().toLowerCase()}`;
+        const existing = JSON.parse(localStorage.getItem(key) || '{}');
+        existing['mts_group_kpi_targets_v1'] = JSON.stringify(next);
+        localStorage.setItem(key, JSON.stringify(existing));
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   // Автоопределение системного логина Windows (например, kiklimenko) и проверка подключенной папки
   useEffect(() => {
@@ -343,6 +720,18 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
     };
   }, []);
 
+  // Синхронизируем urmConfig и цели группы с активным профилем при каждом открытии окна
+  useEffect(() => {
+    if (isOpen) {
+      const cfg = loadUrmSyncConfig();
+      setUrmConfig(cfg);
+      setGroupKpiTargets(loadGroupKpiTargets());
+      if (cfg.isSupervisorReader) {
+        setDataScope('department');
+      }
+    }
+  }, [isOpen]);
+
   const refreshDepartmentFolderStats = useCallback(
     async (customCfg?: UrmSyncConfig) => {
       const cfg = customCfg || urmConfig;
@@ -355,7 +744,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
           setDepartmentRecords(res.allRecords);
           setLastSyncTimestamp(res.timestamp);
           setSyncStatusMessage(
-            `Обновлено (${res.packages.length} сотр.) в ${new Date(res.timestamp).toLocaleTimeString('ru-RU')}`
+            `Обновлено в ${new Date(res.timestamp).toLocaleTimeString('ru-RU')}`
           );
         } else if (res.error) {
           setSyncErrorMessage(res.error);
@@ -437,19 +826,46 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
     angleRad: number;
   } | null>(null);
 
-  // Видимость колонок таблицы
-  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnId, boolean>>({
-    date: true,
-    time: true,
-    operator: false,
-    phone: true,
-    deleted: true,
-    type: true,
-    attempts: true,
-    link: true,
-    city: true,
-    note: true,
+  // Видимость колонок таблицы (сохраняется по умолчанию в localStorage)
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnId, boolean>>(() => {
+    const defaults: Record<ColumnId, boolean> = {
+      date: true,
+      time: true,
+      ready: true,
+      operator: false,
+      phone: true,
+      deleted: true,
+      type: true,
+      attempts: true,
+      link: true,
+      city: true,
+      note: true,
+    };
+    try {
+      const raw = localStorage.getItem('mts_shift_stats_visible_cols_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return { ...defaults, ...parsed };
+      }
+    } catch {
+      // ignore
+    }
+    return defaults;
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mts_shift_stats_visible_cols_v1', JSON.stringify(visibleColumns));
+      if (urmConfig.operatorId) {
+        const key = `mts_user_personal_prefs_v1_${urmConfig.operatorId.trim().toLowerCase()}`;
+        const existing = JSON.parse(localStorage.getItem(key) || '{}');
+        existing['mts_shift_stats_visible_cols_v1'] = JSON.stringify(visibleColumns);
+        localStorage.setItem(key, JSON.stringify(existing));
+      }
+    } catch {
+      // ignore
+    }
+  }, [visibleColumns, urmConfig.operatorId]);
 
   // Ширины всех столбцов с сохранением в localStorage
   const [colWidths, setColWidths] = useState<Record<ColumnId, number>>(() => {
@@ -470,10 +886,16 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_COL_WIDTHS_KEY, JSON.stringify(colWidths));
+      if (urmConfig.operatorId) {
+        const key = `mts_user_personal_prefs_v1_${urmConfig.operatorId.trim().toLowerCase()}`;
+        const existing = JSON.parse(localStorage.getItem(key) || '{}');
+        existing[STORAGE_COL_WIDTHS_KEY] = JSON.stringify(colWidths);
+        localStorage.setItem(key, JSON.stringify(existing));
+      }
     } catch {
       // ignore
     }
-  }, [colWidths]);
+  }, [colWidths, urmConfig.operatorId]);
 
   // Состояние активных окон/поповеров в шапке
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -508,8 +930,10 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
   const [optionsTab, setOptionsTab] = useState<OptionsTab>('params');
 
   const downloadMenuRef = useRef<HTMLDivElement | null>(null);
+  const tableDropdownRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Базовый источник записей в зависимости от режима: «Моя смена» или «Отдел УРМ»
+  // Базовый источник записей в зависимости от режима: «Моя смена» или «Группа»
   const activeSourceRecords = useMemo<ShiftHistoryRecord[]>(() => {
     if (dataScope === 'department') {
       return departmentRecords.filter((r) => {
@@ -669,10 +1093,24 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isDownloadDropdownOpen]);
 
-  if (!isOpen) return null;
+  // Закрытие выпадающего списка таблиц в капсуле по клику вне
+  useEffect(() => {
+    if (!isTableDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tableDropdownRef.current && !tableDropdownRef.current.contains(e.target as Node)) {
+        setIsTableDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isTableDropdownOpen]);
 
   const activeColumnsList = TABLE_COLUMNS.filter((c) =>
     c.id === 'operator' ? visibleColumns.operator || dataScope === 'department' : visibleColumns[c.id]
+  );
+  const totalActiveColsWeight = Math.max(
+    1,
+    activeColumnsList.reduce((acc, c) => acc + colWidths[c.id], 0)
   );
 
   // 1. Отсечение по выбранной дате / периоду (по умолчанию «Сегодня» — отсекает все прошлые дни)
@@ -708,59 +1146,474 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
   const todayLabel = formatDateRu(startDate);
   const verticalDateLabel = filteredRecords[0]?.date || todayLabel;
 
-  // Уникальные РГ для фильтрации
+  // Уникальные РГ для фильтрации (включая базовый перечень и пакеты из папки)
   const availableGroups = Array.from(
     new Set(
-      departmentPackages
-        .map((p) => (p.groupLeaderName || '').trim())
-        .filter(Boolean)
+      [
+        ...BUILTIN_SAMPLE_EMPLOYEES.map((s) => s.groupLeaderName),
+        ...departmentPackages.map((p) => (p.groupLeaderName || '').trim()),
+      ].filter(Boolean)
     )
   );
 
-  // Скачивание таблицы в Excel (.csv с UTF-8 BOM)
+  // Единый список сотрудников для сводных таблиц «День», «Месяц» и «Норма»
+  const aggregatedEmployeesList = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        operatorId: string;
+        operatorName: string;
+        groupLeaderName: string;
+        records: ShiftHistoryRecord[];
+        todayDate?: string;
+        todayStats?: UrmEmployeeStatPackage['todayStats'];
+        sampleDaily?: BuiltinSampleEmployee['daily'];
+        sampleMonthly?: BuiltinSampleEmployee['monthly'];
+        defaultMonthlyPlan?: number;
+        defaultIsTrainee?: boolean;
+      }
+    >();
+
+    // 1. Всегда включаем неудаляемый базовый перечень сотрудников (с учетом фильтра Подгруппа / Сотрудник из окна Фильтров)
+    for (const sample of BUILTIN_SAMPLE_EMPLOYEES) {
+      if (
+        selectedGroupFilter !== 'all' &&
+        sample.groupLeaderName.toLowerCase() !== selectedGroupFilter.toLowerCase()
+      ) {
+        continue;
+      }
+      if (selectedOperatorFilter !== 'all' && sample.operatorId !== selectedOperatorFilter) {
+        continue;
+      }
+      map.set(sample.key, {
+        key: sample.key,
+        operatorId: sample.operatorId,
+        operatorName: sample.operatorName,
+        groupLeaderName: sample.groupLeaderName,
+        records: [],
+        sampleDaily: sample.daily,
+        sampleMonthly: sample.monthly,
+        defaultMonthlyPlan: sample.monthlyPlan,
+        defaultIsTrainee: sample.isTrainee,
+      });
+    }
+
+    // 2. Дополняем / обновляем реальными пакетами из сетевой папки, если они есть
+    for (const pkg of departmentPackages) {
+      if (
+        selectedGroupFilter !== 'all' &&
+        (pkg.groupLeaderName || '').toLowerCase() !== selectedGroupFilter.toLowerCase()
+      ) {
+        continue;
+      }
+      if (selectedOperatorFilter !== 'all' && pkg.operatorId !== selectedOperatorFilter) {
+        continue;
+      }
+      const key = (pkg.operatorId || pkg.operatorName || 'operator').trim().toLowerCase();
+      const existing = map.get(key);
+      map.set(key, {
+        key,
+        operatorId: pkg.operatorId || key,
+        operatorName: (pkg.operatorName || existing?.operatorName || pkg.operatorId || 'Сотрудник').trim(),
+        groupLeaderName: (pkg.groupLeaderName || existing?.groupLeaderName || '').trim(),
+        records: (pkg.records || []).filter((r) => r.shareDirection !== 'received'),
+        todayDate: pkg.todayDate,
+        todayStats: pkg.todayStats,
+        sampleDaily: existing?.sampleDaily,
+        sampleMonthly: existing?.sampleMonthly,
+        defaultMonthlyPlan: existing?.defaultMonthlyPlan,
+        defaultIsTrainee: existing?.defaultIsTrainee,
+      });
+    }
+
+    const searchQ = searchQuery.trim().toLowerCase();
+    const list = Array.from(map.values());
+    if (!searchQ) return list;
+    return list.filter(
+      (emp) =>
+        emp.operatorName.toLowerCase().includes(searchQ) ||
+        emp.operatorId.toLowerCase().includes(searchQ)
+    );
+  }, [
+    departmentPackages,
+    selectedGroupFilter,
+    selectedOperatorFilter,
+    searchQuery,
+  ]);
+
+  // Строки таблицы «День» (Сводка за выбранный день / период)
+  const dailySummaryData = useMemo(() => {
+    const isSingleToday =
+      isSameDay(startDate, endDate) && formatDateRu(startDate) === formatDateRu(new Date());
+
+    const rows = aggregatedEmployeesList.map((emp) => {
+      const periodRecs = emp.records.filter((r) => {
+        const parsed = parseDateRu(r.date);
+        if (!parsed) return true;
+        return isWithinDateRangeInclusive(parsed, startDate, endDate);
+      });
+
+      let saved = periodRecs.filter(
+        (r) =>
+          r.type === 'MNP' ||
+          r.type === 'По времени' ||
+          (r.type as string) === 'По просьбе' ||
+          r.type === 'АВТО'
+      ).length;
+      let refused = periodRecs.filter((r) => r.type === 'Отказ').length;
+      let unreachable = periodRecs.filter(
+        (r) => r.type === 'Недозвон (По времени)' || r.type === 'Недозвон (Авто)'
+      ).length;
+      let processed = saved + refused + unreachable;
+
+      if (
+        isSingleToday &&
+        emp.todayStats &&
+        emp.todayDate === formatDateRu(startDate) &&
+        processed === 0 &&
+        emp.todayStats.totalCalls > 0
+      ) {
+        saved = emp.todayStats.savedCount || 0;
+        refused = emp.todayStats.refusedCount || 0;
+        unreachable = emp.todayStats.unreachableCount || 0;
+        processed = Math.max(emp.todayStats.totalCalls || 0, saved + refused + unreachable);
+      }
+
+      if (processed === 0 && emp.sampleDaily) {
+        processed = emp.sampleDaily.processed;
+        saved = emp.sampleDaily.saved;
+        refused = emp.sampleDaily.refused;
+      }
+
+      let readySeconds = 0;
+      if (isSingleToday && emp.todayStats && emp.todayStats.readyTimeSeconds !== undefined) {
+        readySeconds = emp.todayStats.readyTimeSeconds;
+      } else {
+        const recWithReady = periodRecs.find((r) => typeof r.readyTimeSeconds === 'number' && r.readyTimeSeconds > 0);
+        if (recWithReady && recWithReady.readyTimeSeconds) {
+          readySeconds = recWithReady.readyTimeSeconds;
+        }
+      }
+      if (
+        readySeconds === 0 &&
+        stats?.readyTimeSeconds &&
+        urmConfig.operatorId &&
+        emp.operatorId.toLowerCase() === urmConfig.operatorId.trim().toLowerCase()
+      ) {
+        readySeconds = stats.readyTimeSeconds;
+      }
+      if (readySeconds === 0 && emp.sampleDaily) {
+        readySeconds = emp.sampleDaily.readySeconds ?? Math.min(28800, emp.sampleDaily.processed * 340 + 5400);
+      }
+
+      const conversionPct = processed > 0 ? (saved / processed) * 100 : 0;
+      const unsaved = Math.max(0, processed - saved);
+      const refusedSharePct = unsaved > 0 ? (refused / unsaved) * 100 : null;
+      const override = groupKpiTargets.employees[emp.key];
+      const isTrainee =
+        override !== undefined ? Boolean(override.isTrainee) : Boolean(emp.defaultIsTrainee);
+      const level = evaluateConversionLevel(conversionPct, isTrainee, groupKpiTargets);
+
+      return {
+        key: emp.key,
+        operatorName: emp.operatorName,
+        processed,
+        saved,
+        refused,
+        conversionPct,
+        refusedSharePct,
+        readySeconds,
+        isTrainee,
+        level,
+      };
+    });
+
+    const sorted = [...rows].sort((a, b) => {
+      let cmp = 0;
+      if (dailySortKey === 'name') {
+        cmp = a.operatorName.localeCompare(b.operatorName, 'ru');
+      } else if (dailySortKey === 'processed') {
+        cmp = a.processed - b.processed;
+      } else if (dailySortKey === 'saved') {
+        cmp = a.saved - b.saved;
+      } else if (dailySortKey === 'conversion') {
+        cmp = a.conversionPct - b.conversionPct;
+      } else if (dailySortKey === 'refusedShare') {
+        cmp = (a.refusedSharePct ?? -1) - (b.refusedSharePct ?? -1);
+      } else if (dailySortKey === 'ready') {
+        cmp = a.readySeconds - b.readySeconds;
+      }
+      return dailySortAsc ? cmp : -cmp;
+    });
+
+    const totalProcessed = sorted.reduce((acc, r) => acc + r.processed, 0);
+    const totalSaved = sorted.reduce((acc, r) => acc + r.saved, 0);
+    const totalRefused = sorted.reduce((acc, r) => acc + r.refused, 0);
+    const totalReadySeconds = sorted.reduce((acc, r) => acc + r.readySeconds, 0);
+    const totalConversionPct = totalProcessed > 0 ? (totalSaved / totalProcessed) * 100 : 0;
+    const totalUnsaved = Math.max(0, totalProcessed - totalSaved);
+    const totalRefusedSharePct = totalUnsaved > 0 ? (totalRefused / totalUnsaved) * 100 : null;
+
+    return {
+      rows: sorted,
+      totalProcessed,
+      totalSaved,
+      totalConversionPct,
+      totalRefusedSharePct,
+      totalReadySeconds,
+    };
+  }, [
+    aggregatedEmployeesList,
+    startDate,
+    endDate,
+    groupKpiTargets,
+    dailySortKey,
+    dailySortAsc,
+    stats?.readyTimeSeconds,
+    urmConfig.operatorId,
+  ]);
+
+  // Строки таблицы «Месяц» (Выполнение месячного плана сохранений и уровня конверсии)
+  const monthlyPlanData = useMemo(() => {
+    const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const monthEnd = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
+
+    const rows = aggregatedEmployeesList.map((emp) => {
+      const monthRecs = emp.records.filter((r) => {
+        const parsed = parseDateRu(r.date);
+        if (!parsed) return true;
+        return isWithinDateRangeInclusive(parsed, monthStart, monthEnd);
+      });
+
+      let saved = monthRecs.filter(
+        (r) =>
+          r.type === 'MNP' ||
+          r.type === 'По времени' ||
+          (r.type as string) === 'По просьбе' ||
+          r.type === 'АВТО'
+      ).length;
+      const refused = monthRecs.filter((r) => r.type === 'Отказ').length;
+      const unreachable = monthRecs.filter(
+        (r) => r.type === 'Недозвон (По времени)' || r.type === 'Недозвон (Авто)'
+      ).length;
+      let processed = saved + refused + unreachable;
+
+      if (processed === 0 && emp.sampleMonthly) {
+        processed = emp.sampleMonthly.processed;
+        saved = emp.sampleMonthly.saved;
+      }
+
+      const override = groupKpiTargets.employees[emp.key];
+      const monthlyPlan =
+        override?.monthlyPlan && override.monthlyPlan > 0
+          ? override.monthlyPlan
+          : emp.defaultMonthlyPlan || groupKpiTargets.defaultMonthlyPlan || 400;
+      const isTrainee =
+        override !== undefined ? Boolean(override.isTrainee) : Boolean(emp.defaultIsTrainee);
+
+      const planPct = monthlyPlan > 0 ? Math.round((saved / monthlyPlan) * 100) : 0;
+      const conversionPct = processed > 0 ? Math.round((saved / processed) * 100) : 0;
+      const level = evaluateConversionLevel(conversionPct, isTrainee, groupKpiTargets);
+
+      return {
+        key: emp.key,
+        operatorName: emp.operatorName,
+        saved,
+        processed,
+        monthlyPlan,
+        planPct,
+        conversionPct,
+        isTrainee,
+        level,
+      };
+    });
+
+    const sorted = [...rows].sort((a, b) => {
+      let cmp = 0;
+      if (monthlySortKey === 'name') {
+        cmp = a.operatorName.localeCompare(b.operatorName, 'ru');
+      } else if (monthlySortKey === 'saved') {
+        cmp = a.saved - b.saved;
+      } else if (monthlySortKey === 'planPct') {
+        cmp = a.planPct - b.planPct;
+      } else if (monthlySortKey === 'conversion') {
+        cmp = a.conversionPct - b.conversionPct;
+      } else if (monthlySortKey === 'level') {
+        cmp = KPI_LEVEL_STYLES[a.level].rank - KPI_LEVEL_STYLES[b.level].rank;
+      }
+      return monthlySortAsc ? cmp : -cmp;
+    });
+
+    const totalSaved = sorted.reduce((acc, r) => acc + r.saved, 0);
+    const totalProcessed = sorted.reduce((acc, r) => acc + r.processed, 0);
+    const totalPlan = sorted.reduce((acc, r) => acc + r.monthlyPlan, 0);
+    const totalPlan82 = sorted.reduce((acc, r) => acc + Math.round(r.monthlyPlan * 0.82), 0);
+    const totalPlanPct = totalPlan > 0 ? Math.round((totalSaved / totalPlan) * 100) : 0;
+    const totalConversionPct =
+      totalProcessed > 0 ? Math.round((totalSaved / totalProcessed) * 100) : 0;
+    const totalLevel = evaluateConversionLevel(totalConversionPct, false, groupKpiTargets);
+
+    const empCount = Math.max(1, sorted.length);
+    const shareTolerancePct =
+      (sorted.filter((r) => KPI_LEVEL_STYLES[r.level].rank >= 2).length / empCount) * 100;
+    const shareTargetPct =
+      (sorted.filter((r) => KPI_LEVEL_STYLES[r.level].rank >= 3).length / empCount) * 100;
+    const shareAggressionPct =
+      (sorted.filter((r) => KPI_LEVEL_STYLES[r.level].rank === 4).length / empCount) * 100;
+
+    return {
+      rows: sorted,
+      totalSaved,
+      totalPlan,
+      totalPlan82,
+      totalPlanPct,
+      totalConversionPct,
+      totalLevel,
+      shareTolerancePct,
+      shareTargetPct,
+      shareAggressionPct,
+    };
+  }, [
+    aggregatedEmployeesList,
+    startDate,
+    groupKpiTargets,
+    monthlySortKey,
+    monthlySortAsc,
+  ]);
+
+  if (!isOpen) return null;
+
+  // Скачивание активной таблицы в Excel (.csv с UTF-8 BOM)
   const handleDownloadCsv = () => {
-    const headers = [
-      'Дата',
-      'Время',
-      'Сотрудник',
-      'РГ / ВС',
-      'Номер телефона',
-      'Тип',
-      'Перезвонов',
-      'Город',
-      'Ссылка',
-      'Заметка',
-    ];
     const escapeCsv = (val: string | number | undefined) => {
       const str = String(val ?? '').replace(/"/g, '""');
       return `"${str}"`;
     };
-    const lines = [
-      headers.map(escapeCsv).join(';'),
-      ...filteredRecords.map((r) =>
+
+    let lines: string[] = [];
+    let fileTag = dataScope === 'department' ? 'Группа' : 'Смена';
+
+    if (
+      dataScope === 'department' &&
+      urmConfig.isSupervisorReader &&
+      groupTableMode === 'daily_summary'
+    ) {
+      fileTag = 'Группа_День';
+      const headers = ['Сотрудник', 'Обработано', 'Сохранено', 'Конверсия', 'Отказы', 'Реди'];
+      lines = [
+        headers.map(escapeCsv).join(';'),
+        ...dailySummaryData.rows.map((r) =>
+          [
+            r.operatorName,
+            r.processed,
+            r.saved,
+            formatPctRu(r.conversionPct, 1),
+            r.refusedSharePct !== null ? formatPctRu(r.refusedSharePct, 1) : '',
+            formatSecondsToHms(r.readySeconds),
+          ]
+            .map(escapeCsv)
+            .join(';')
+        ),
         [
-          r.date,
-          r.time,
-          r.operatorName || urmConfig.operatorName || 'Сотрудник',
-          r.groupLeaderName || urmConfig.groupLeaderName || '',
-          r.phone,
-          r.type,
-          r.attemptCount ?? 0,
-          r.city,
-          r.link,
-          r.notes,
+          'Итого',
+          dailySummaryData.totalProcessed,
+          dailySummaryData.totalSaved,
+          formatPctRu(dailySummaryData.totalConversionPct, 1),
+          dailySummaryData.totalRefusedSharePct !== null
+            ? formatPctRu(dailySummaryData.totalRefusedSharePct, 1)
+            : '',
+          formatSecondsToHms(dailySummaryData.totalReadySeconds),
         ]
           .map(escapeCsv)
-          .join(';')
-      ),
-    ];
+          .join(';'),
+      ];
+    } else if (
+      dataScope === 'department' &&
+      urmConfig.isSupervisorReader &&
+      groupTableMode === 'monthly_plan'
+    ) {
+      fileTag = 'Группа_Месяц';
+      const headers = ['Сотрудник', 'Сохранено', 'План', 'Конверсия', 'Уровень'];
+      lines = [
+        headers.map(escapeCsv).join(';'),
+        ...monthlyPlanData.rows.map((r) =>
+          [
+            r.operatorName,
+            r.saved,
+            `${r.planPct}%`,
+            `${r.conversionPct}%`,
+            KPI_LEVEL_STYLES[r.level].label,
+          ]
+            .map(escapeCsv)
+            .join(';')
+        ),
+        [
+          'Итого',
+          monthlyPlanData.totalSaved,
+          `${monthlyPlanData.totalPlanPct}%`,
+          `${monthlyPlanData.totalConversionPct}%`,
+          KPI_LEVEL_STYLES[monthlyPlanData.totalLevel].label,
+        ]
+          .map(escapeCsv)
+          .join(';'),
+      ];
+    } else if (dataScope === 'department' && groupTableMode === 'plans_norm') {
+      fileTag = 'Группа_Норма';
+      const headers = ['Сотрудник', '82%', '100%'];
+      lines = [
+        headers.map(escapeCsv).join(';'),
+        ...monthlyPlanData.rows.map((r) => {
+          const plan100 = groupKpiTargets.employees[r.key]?.monthlyPlan || r.monthlyPlan;
+          const plan82 = Math.round(plan100 * 0.82);
+          return [r.operatorName, plan82, plan100].map(escapeCsv).join(';');
+        }),
+        ['Итого', monthlyPlanData.totalPlan82, monthlyPlanData.totalPlan]
+          .map(escapeCsv)
+          .join(';'),
+      ];
+    } else {
+      const headers = [
+        'Дата',
+        'Время',
+        'Реди',
+        'Сотрудник',
+        'РГ / ВС',
+        'Номер телефона',
+        'Тип',
+        'Перезвонов',
+        'Город',
+        'Ссылка',
+        'Заметка',
+      ];
+      lines = [
+        headers.map(escapeCsv).join(';'),
+        ...filteredRecords.map((r) =>
+          [
+            r.date,
+            r.time,
+            formatSecondsToHms(r.readyTimeSeconds ?? stats?.readyTimeSeconds ?? 0),
+            r.operatorName || urmConfig.operatorName || 'Сотрудник',
+            r.groupLeaderName || urmConfig.groupLeaderName || '',
+            r.phone,
+            r.type,
+            r.attemptCount ?? 0,
+            r.city,
+            r.link,
+            r.notes,
+          ]
+            .map(escapeCsv)
+            .join(';')
+        ),
+      ];
+    }
+
     const csvContent = '\uFEFF' + lines.join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const scopeSuffix = dataScope === 'department' ? 'Отдел_УРМ' : 'Смена';
-    a.download = `МТС_MNP_${scopeSuffix}_${formatDateRu(startDate)}.csv`;
+    a.download = `МТС_MNP_${fileTag}_${formatDateRu(startDate)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -869,6 +1722,8 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
     setActivePreset('today');
     setStartDate(defaultDay);
     setEndDate(defaultDay);
+    setSelectedGroupFilter('all');
+    setSelectedOperatorFilter('all');
   };
 
   const shiftCalendarMonths = (deltaMonths: number) => {
@@ -937,103 +1792,237 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
     <div
       className="fixed inset-x-0 top-18 bottom-0 z-35 bg-[#F4F5F7] p-2.5 sm:p-4 flex flex-col overscroll-contain animate-in fade-in duration-200"
       role="region"
-      aria-label="Статистика смен"
+      aria-label="Статистика группы"
     >
-      {/* Основной белый лист страницы во всю рабочую область */}
-      <div className="relative flex-1 w-full h-full bg-white rounded-3xl border border-[#EBECEF] shadow-mts-card overflow-hidden overscroll-contain flex flex-col">
-        {/* ШАПКА СТРАНИЦЫ: Верхний ряд (Название «Статистика смен» + переключатель Таблица / График + жемчужина закрытия) */}
-        <div className="px-6 sm:px-8 pt-5 pb-3.5 flex flex-wrap items-center justify-between gap-4 border-b border-[#EBECEF]">
-          <div className="flex items-center flex-wrap gap-3 sm:gap-4">
-            <h1 className="text-xl sm:text-[24px] font-black text-[#1D2023] font-mts-extended tracking-tight">
-              Статистика смен
+      {/* Основной белый лист страницы: для компактных таблиц (День / Месяц / Норма) сжимается по центру с запасом ширины под шапку */}
+      <div
+        className={`relative flex-1 ${
+          mainView === 'table' &&
+          dataScope === 'department' &&
+          groupTableMode !== 'log'
+            ? 'w-fit min-w-[760px] max-w-full mx-auto'
+            : 'w-full'
+        } h-full bg-white rounded-3xl border border-[#EBECEF] shadow-mts-card overflow-hidden overscroll-contain flex flex-col transition-all duration-200`}
+      >
+        {/* ШАПКА СТРАНИЦЫ: Единая чистая строка без красной кнопки «Группа» */}
+        <div className="px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-[#EBECEF]">
+          <div className="flex items-center flex-wrap gap-3">
+            <h1 className="text-lg sm:text-xl font-black text-[#1D2023] font-mts-extended tracking-tight">
+              Статистика группы
             </h1>
 
-            {/* Главный переключатель Таблица / График на весь экран (без жирной черной полосы) */}
-            <div className="inline-flex items-center bg-[#F2F3F7] p-1 rounded-full border border-[#E4E7EC]">
-              <button
-                type="button"
-                onClick={() => setMainView('table')}
-                className={`h-8 px-4 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  mainView === 'table'
-                    ? 'bg-[#1D2023] text-white shadow-2xs'
-                    : 'text-[#626C77] hover:text-[#1D2023]'
-                }`}
-              >
-                <TableIcon className="w-3.5 h-3.5" />
-                <span>Таблица</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMainView('chart')}
-                className={`h-8 px-4 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  mainView === 'chart'
-                    ? 'bg-[#1D2023] text-white shadow-2xs'
-                    : 'text-[#626C77] hover:text-[#1D2023]'
-                }`}
-              >
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>График</span>
-              </button>
-            </div>
+            {/* Единая капсула: [ Таблица: День ⌄ | График ] */}
+            {(() => {
+              const activeTableLabel =
+                dataScope === 'own'
+                  ? 'Моя смена'
+                  : groupTableMode === 'log'
+                  ? 'Журнал'
+                  : urmConfig.isSupervisorReader && groupTableMode === 'daily_summary'
+                  ? 'День'
+                  : urmConfig.isSupervisorReader && groupTableMode === 'monthly_plan'
+                  ? 'Месяц'
+                  : 'Норма';
 
-            {/* Одиночная кнопка-переключатель «Отдел УРМ» (только для руководителя: без лишней дублирующей кнопки «Моя смена») */}
-            {(urmConfig.isSupervisorReader || departmentPackages.length > 0) && (
-              <button
-                type="button"
-                onClick={() => {
-                  const nextScope = dataScope === 'department' ? 'own' : 'department';
-                  setDataScope(nextScope);
-                  if (nextScope === 'department') {
-                    refreshDepartmentFolderStats();
-                  }
-                }}
-                title={
-                  dataScope === 'department'
-                    ? 'Нажмите, чтобы вернуться к своей личной статистике'
-                    : 'Нажмите, чтобы показать сводную статистику всех сотрудников из папки УРМ'
-                }
-                className={`h-10 px-4 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap border ${
-                  dataScope === 'department'
-                    ? 'bg-[#E30613] text-white border-[#E30613] shadow-2xs'
-                    : 'bg-[#F2F3F7] text-[#626C77] border-[#E4E7EC] hover:text-[#1D2023]'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Отдел УРМ ({departmentPackages.length})</span>
-              </button>
-            )}
+              const tableMenuItems: {
+                key: string;
+                label: string;
+                scope: DataScopeMode;
+                mode?: GroupTableMode;
+                isActive: boolean;
+              }[] = [
+                {
+                  key: 'own',
+                  label: 'Моя смена',
+                  scope: 'own',
+                  isActive: dataScope === 'own',
+                },
+                {
+                  key: 'dept_log',
+                  label: 'Группа: Журнал',
+                  scope: 'department',
+                  mode: 'log',
+                  isActive: dataScope === 'department' && groupTableMode === 'log',
+                },
+                ...(urmConfig.isSupervisorReader
+                  ? [
+                      {
+                        key: 'dept_daily',
+                        label: 'Группа: День',
+                        scope: 'department' as DataScopeMode,
+                        mode: 'daily_summary' as GroupTableMode,
+                        isActive:
+                          dataScope === 'department' && groupTableMode === 'daily_summary',
+                      },
+                      {
+                        key: 'dept_monthly',
+                        label: 'Группа: Месяц',
+                        scope: 'department' as DataScopeMode,
+                        mode: 'monthly_plan' as GroupTableMode,
+                        isActive:
+                          dataScope === 'department' && groupTableMode === 'monthly_plan',
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'dept_norm',
+                  label: 'Группа: Норма',
+                  scope: 'department',
+                  mode: 'plans_norm',
+                  isActive:
+                    dataScope === 'department' &&
+                    (groupTableMode === 'plans_norm' ||
+                      (!urmConfig.isSupervisorReader && groupTableMode !== 'log')),
+                },
+              ];
+
+              return (
+                <div ref={tableDropdownRef} className="relative">
+                  <div className="inline-flex items-center bg-[#F2F3F7] p-0.5 rounded-full border border-[#E4E7EC]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (mainView !== 'table') {
+                          setMainView('table');
+                          setIsTableDropdownOpen(false);
+                        } else {
+                          setIsTableDropdownOpen((prev) => !prev);
+                        }
+                      }}
+                      className={`h-8 pl-3.5 pr-2.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        mainView === 'table'
+                          ? 'bg-[#1D2023] text-white shadow-2xs'
+                          : 'text-[#626C77] hover:text-[#1D2023]'
+                      }`}
+                    >
+                      <TableIcon className="w-3.5 h-3.5 shrink-0" />
+                      <span>Таблица: {activeTableLabel}</span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 shrink-0 opacity-80 transition-transform duration-150 ${
+                          isTableDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMainView('chart');
+                        setIsTableDropdownOpen(false);
+                      }}
+                      className={`h-8 px-3.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        mainView === 'chart'
+                          ? 'bg-[#1D2023] text-white shadow-2xs'
+                          : 'text-[#626C77] hover:text-[#1D2023]'
+                      }`}
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                      <span>График</span>
+                    </button>
+                  </div>
+
+                  {isTableDropdownOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 z-40 min-w-[205px] bg-white rounded-2xl border border-[#EBECEF] shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                      {tableMenuItems.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => {
+                            setMainView('table');
+                            setDataScope(item.scope);
+                            if (item.mode) {
+                              setGroupTableMode(item.mode);
+                            }
+                            if (item.scope === 'department') {
+                              refreshDepartmentFolderStats();
+                            }
+                            setIsTableDropdownOpen(false);
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl text-left text-xs transition-colors flex items-center justify-between gap-2 cursor-pointer ${
+                            item.isActive
+                              ? 'bg-[#F2F3F7] text-[#1D2023] font-bold'
+                              : 'text-[#1D2023] font-medium hover:bg-[#F8F9FB]'
+                          }`}
+                        >
+                          <span className="truncate">{item.label}</span>
+                          {item.isActive && <Check className="w-3.5 h-3.5 text-[#1D2023] shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
-          <div className="flex items-center gap-2.5 ml-auto">
-            {/* Кнопка мгновенного обновления папки отдела в режиме руководителя */}
-            {dataScope === 'department' && (
-              <button
-                type="button"
-                onClick={() => refreshDepartmentFolderStats()}
-                title="Обновить данные из сетевой папки УРМ"
-                className="h-9 px-3.5 rounded-full bg-[#F2F3F7] hover:bg-[#E5E7EB] text-[#1D2023] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin text-[#E30613]' : ''}`} />
-                <span className="hidden sm:inline">Обновить папку</span>
-              </button>
-            )}
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Поиск: круглая кнопка-лупа с плавным раскрытием в поле ввода МТС */}
+            {mainView === 'table' && (() => {
+              const isOpenSearch = isSearchExpanded || Boolean(searchQuery);
+              return (
+                <div
+                  className={`h-9 rounded-full flex items-center overflow-hidden transition-[width,background-color,border-color] duration-200 ease-out ${
+                    isOpenSearch
+                      ? 'w-44 sm:w-52 bg-white border border-[#0077FF] ring-1 ring-[#0077FF]/30 pl-3.5 pr-1.5 justify-between'
+                      : 'w-9 bg-[#F2F3F7] hover:bg-[#E5E7EB] border border-transparent justify-center'
+                  }`}
+                >
+                  {isOpenSearch ? (
+                    <>
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onBlur={() => {
+                          if (!searchQuery.trim()) {
+                            setIsSearchExpanded(false);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setSearchQuery('');
+                            setIsSearchExpanded(false);
+                          }
+                        }}
+                        placeholder="Поиск..."
+                        aria-label="Поиск"
+                        className="w-full bg-transparent text-xs font-medium text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none font-mts-compact"
+                      />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSearchQuery('');
+                          setIsSearchExpanded(false);
+                        }}
+                        aria-label="Очистить и свернуть поиск"
+                        className="w-6 h-6 rounded-full hover:bg-[#F2F3F7] text-[#8C95A0] hover:text-[#1D2023] flex items-center justify-center transition-colors shrink-0 cursor-pointer ml-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSearchExpanded(true);
+                        requestAnimationFrame(() => {
+                          searchInputRef.current?.focus();
+                        });
+                      }}
+                      title="Поиск"
+                      aria-label="Поиск"
+                      className="w-9 h-9 rounded-full text-[#1D2023] flex items-center justify-center cursor-pointer"
+                    >
+                      <Search className="w-4 h-4 stroke-[1.75]" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
-            {/* Поиск показываем в режиме таблицы */}
-            {mainView === 'table' && (
-              <div className="w-56 sm:w-72 h-9 px-3 rounded-full bg-[#F4F5F7] border border-[#E4E7EC] flex items-center gap-2 focus-within:border-[#B8C0CC] focus-within:bg-white transition-colors">
-                <Search className="w-3.5 h-3.5 text-[#8C95A0] shrink-0" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Поиск по номеру, сотруднику, городу..."
-                  aria-label="Поиск"
-                  className="w-full bg-transparent text-xs font-normal text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none font-mts-compact"
-                />
-              </div>
-            )}
-
-            {/* 1. Кнопка Фильтр */}
+            {/* 1. Кнопка Фильтр (содержит Подгруппу, Сотрудника и Период дат) */}
             <button
               type="button"
               onClick={() => {
@@ -1042,9 +2031,14 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
               }}
               title="Фильтры"
               aria-label="Фильтры"
-              className="w-9 h-9 rounded-full bg-[#F2F3F7] hover:bg-[#E5E7EB] text-[#1D2023] flex items-center justify-center transition-colors cursor-pointer"
+              className="w-9 h-9 rounded-full bg-[#F2F3F7] hover:bg-[#E5E7EB] text-[#1D2023] flex items-center justify-center transition-colors cursor-pointer relative"
             >
               <Filter className="w-4 h-4 stroke-[1.75]" />
+              {(selectedGroupFilter !== 'all' ||
+                selectedOperatorFilter !== 'all' ||
+                activePreset !== 'today') && (
+                <span className="w-2 h-2 rounded-full bg-[#E30613] absolute top-1.5 right-1.5 ring-2 ring-white" />
+              )}
             </button>
 
             {/* 2. Кнопка Скачать */}
@@ -1103,14 +2097,14 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                 setIsDownloadDropdownOpen(false);
                 setIsOptionsModalOpen(true);
               }}
-              title="Опции и настройки (путь к папке УРМ и колонки)"
+              title="Опции и настройки"
               aria-label="Опции и настройки"
               className="w-9 h-9 rounded-full bg-[#F2F3F7] hover:bg-[#E5E7EB] text-[#1D2023] flex items-center justify-center transition-colors cursor-pointer relative"
             >
               <Settings className="w-4 h-4 stroke-[1.75]" />
               {urmConfig.enabled && (
                 <span
-                  title="Бесконтактная передача статистики в УРМ активна"
+                  title="Бесконтактная передача статистики активна"
                   className="w-2 h-2 rounded-full bg-[#109E59] absolute top-1.5 right-1.5 ring-2 ring-white"
                 />
               )}
@@ -1131,154 +2125,517 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
           </div>
         </div>
 
-        {/* ПАНЕЛЬ РУКОВОДИТЕЛЯ (Рустам / ВС / РГ): Живые карточки сотрудников из общей папки MSK_Stats */}
-        {dataScope === 'department' && (
-          <div className="px-6 sm:px-8 py-3 bg-[#F8F9FB] border-b border-[#EBECEF] flex flex-col gap-2.5 font-mts-compact">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center flex-wrap gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#626C77]">
-                  Сводка отдела УРМ:
-                </span>
-
-                {/* Фильтр: Все сотрудники */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedOperatorFilter('all')}
-                  className={`h-7 px-3 rounded-full text-xs font-bold transition-colors cursor-pointer ${
-                    selectedOperatorFilter === 'all'
-                      ? 'bg-[#1D2023] text-white'
-                      : 'bg-white border border-[#E4E7EC] text-[#1D2023] hover:bg-[#F2F3F7]'
-                  }`}
-                >
-                  Все ({departmentPackages.length})
-                </button>
-
-                {/* Фильтр по РГ / ВС (если указаны разные РГ) */}
-                {availableGroups.length > 0 && (
-                  <select
-                    value={selectedGroupFilter}
-                    onChange={(e) => setSelectedGroupFilter(e.target.value)}
-                    className="h-7 px-2.5 rounded-full bg-white border border-[#E4E7EC] text-xs font-bold text-[#1D2023] focus:outline-none cursor-pointer"
-                  >
-                    <option value="all">Все РГ / ВС</option>
-                    {availableGroups.map((g) => (
-                      <option key={g} value={g}>
-                        РГ: {g}
-                      </option>
-                    ))}
-                  </select>
-                )}
-
-                {/* Карточки-переключатели сотрудников */}
-                {departmentPackages
-                  .filter(
-                    (pkg) =>
-                      selectedGroupFilter === 'all' ||
-                      (pkg.groupLeaderName || '').toLowerCase() ===
-                        selectedGroupFilter.toLowerCase()
-                  )
-                  .map((pkg) => {
-                    const isSelected = selectedOperatorFilter === pkg.operatorId;
-                    const empRecordsInPeriod = (pkg.records || []).filter((r) => {
-                      if (r.shareDirection === 'received') return false;
-                      const parsed = parseDateRu(r.date);
-                      if (!parsed) return true;
-                      return isWithinDateRangeInclusive(parsed, startDate, endDate);
-                    });
-                    const savedCnt = empRecordsInPeriod.filter(
-                      (r) =>
-                        r.type === 'MNP' ||
-                        r.type === 'По времени' ||
-                        (r.type as string) === 'По просьбе' ||
-                        r.type === 'АВТО'
-                    ).length;
-                    const refusedCnt = empRecordsInPeriod.filter((r) => r.type === 'Отказ').length;
-                    const unreachCnt = empRecordsInPeriod.filter(
-                      (r) =>
-                        r.type === 'Недозвон (По времени)' || r.type === 'Недозвон (Авто)'
-                    ).length;
-                    const minsAgo = Math.max(
-                      0,
-                      Math.round((Date.now() - (pkg.updatedAt || Date.now())) / 60000)
-                    );
-
-                    return (
-                      <button
-                        key={pkg.operatorId}
-                        type="button"
-                        onClick={() =>
-                          setSelectedOperatorFilter(
-                            isSelected ? 'all' : pkg.operatorId
-                          )
-                        }
-                        className={`h-8 px-3 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
-                          isSelected
-                            ? 'bg-[#1D2023] text-white border-[#1D2023] shadow-2xs'
-                            : 'bg-white text-[#1D2023] border-[#E4E7EC] hover:border-[#B8C0CC]'
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            minsAgo <= 15 ? 'bg-[#109E59]' : 'bg-[#8C95A0]'
-                          }`}
-                          title={
-                            minsAgo === 0
-                              ? 'Только что обновлён'
-                              : `Обновлено ${minsAgo} мин. назад`
-                          }
-                        />
-                        <span className="truncate max-w-[140px]">{pkg.operatorName}</span>
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">
-                          ✓ {savedCnt}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-[#E30613]">
-                          ✕ {refusedCnt}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">
-                          ⏳ {unreachCnt}
-                        </span>
-                      </button>
-                    );
-                  })}
-              </div>
-
-              <div className="text-[11px] text-[#626C77] flex items-center gap-2">
-                {lastSyncTimestamp && (
-                  <span>
-                    Синхронизация: {new Date(lastSyncTimestamp).toLocaleTimeString('ru-RU')}
-                  </span>
-                )}
-                {departmentPackages.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOptionsTab('params');
-                      setIsOptionsModalOpen(true);
-                    }}
-                    className="text-[#E30613] font-bold hover:underline cursor-pointer"
-                  >
-                    Настроить путь к сетевой папке →
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* РАБОЧАЯ ОБЛАСТЬ НА ВЕСЬ ЭКРАН (ТАБЛИЦА ИЛИ ГРАФИК БЕЗ ЖИРНОЙ ЧЕРНОЙ ПОЛОСЫ) */}
+        {/* РАБОЧАЯ ОБЛАСТЬ */}
         <div className="flex-1 w-full bg-white overflow-hidden flex flex-col">
           {mainView === 'table' ? (
-            /* 100% ПОЛНОЭКРАННАЯ ТАБЛИЦА */
-            <div className="flex-1 w-full h-full bg-white overflow-auto overscroll-contain font-mts-compact">
-              <table
-                className="border-collapse table-fixed text-left font-mts-compact"
-                style={{
-                  width: `${activeColumnsList.reduce((acc, c) => acc + colWidths[c.id], 0)}px`,
-                }}
-              >
+            dataScope === 'department' &&
+            urmConfig.isSupervisorReader &&
+            groupTableMode === 'daily_summary' ? (
+              /* ТАБЛИЦА 2: СВОДКА ЗА ДЕНЬ (Только для Администратора) */
+              <div className="flex-1 bg-white overflow-y-auto overflow-x-auto overscroll-contain font-mts-compact">
+                <table className="w-full min-w-[740px] border-collapse text-left font-mts-compact">
+                  <thead>
+                    <tr className="bg-[#2F343A] text-white border-b border-[#2F343A]">
+                      <th
+                        colSpan={6}
+                        className="h-7 px-4 text-center text-xs font-bold tracking-wide tabular-nums"
+                      >
+                        {isSameDay(startDate, endDate)
+                          ? formatDateRu(startDate)
+                          : `${formatDateRu(startDate)} — ${formatDateRu(endDate)}`}
+                      </th>
+                    </tr>
+                    <tr className="bg-[#F2F3F7] border-b border-[#D5D8DD]">
+                      {(
+                        [
+                          { key: 'name', label: 'Сотрудник', align: 'left' },
+                          { key: 'processed', label: 'Обработано', align: 'center' },
+                          { key: 'saved', label: 'Сохранено', align: 'center' },
+                          { key: 'conversion', label: 'Конверсия', align: 'center' },
+                          { key: 'refusedShare', label: 'Отказы', align: 'center' },
+                          { key: 'ready', label: 'Реди', align: 'center' },
+                        ] as const
+                      ).map((col) => (
+                        <th
+                          key={col.key}
+                          scope="col"
+                          onClick={() => {
+                            if (dailySortKey === col.key) {
+                              setDailySortAsc((p) => !p);
+                            } else {
+                              setDailySortKey(col.key);
+                              setDailySortAsc(col.key === 'name');
+                            }
+                          }}
+                          className={`h-8 px-4 text-xs font-semibold text-[#4E5761] border-r border-[#DFE2E8] last:border-r-0 select-none cursor-pointer hover:bg-[#E7E9EF] transition-colors whitespace-nowrap ${
+                            col.align === 'center' ? 'text-center' : 'text-left'
+                          }`}
+                        >
+                          <div
+                            className={`flex items-center gap-1.5 ${
+                              col.align === 'center' ? 'justify-center' : 'justify-between'
+                            }`}
+                          >
+                            <span>{col.label}</span>
+                            <span className="text-[#8C95A0] shrink-0 flex items-center" aria-hidden="true">
+                              <svg
+                                viewBox="0 0 14 14"
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.25"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M4.5 10.5V3.5M4.5 3.5L2.5 5.5M4.5 3.5L6.5 5.5" />
+                                <path d="M9.5 3.5V10.5M9.5 10.5L7.5 8.5M9.5 10.5L11.5 8.5" />
+                              </svg>
+                            </span>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailySummaryData.rows.map((row) => {
+                      const levelStyle = KPI_LEVEL_STYLES[row.level];
+                      return (
+                        <tr
+                          key={row.key}
+                          className="h-8 border-b border-[#DFE2E8] hover:bg-[#F8F9FB] transition-colors"
+                        >
+                          <td className="px-4 text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] whitespace-nowrap">
+                            <div className="flex items-center justify-between gap-4">
+                              <span>{row.operatorName}</span>
+                              {row.isTrainee && (
+                                <span className="text-[11px] font-normal text-[#8C95A0] shrink-0">
+                                  Стажёр
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 text-center text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                            {row.processed}
+                          </td>
+                          <td className="px-4 text-center text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                            {row.saved}
+                          </td>
+                          <td
+                            className={`px-4 text-center text-xs border-r border-[#DFE2E8] tabular-nums whitespace-nowrap ${levelStyle.cellClass}`}
+                          >
+                            {formatPctRu(row.conversionPct, 1)}
+                          </td>
+                          <td className="px-4 text-center text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                            {row.refusedSharePct !== null ? formatPctRu(row.refusedSharePct, 1) : ''}
+                          </td>
+                          <td className="px-4 text-center text-xs font-medium text-[#1D2023] tabular-nums whitespace-nowrap">
+                            {formatSecondsToHms(row.readySeconds)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="h-8 bg-[#2F343A] text-white border-t border-[#2F343A]">
+                      <td className="px-4 text-xs font-bold border-r border-[#454C54] whitespace-nowrap">
+                        Итого
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold border-r border-[#454C54] tabular-nums whitespace-nowrap">
+                        {dailySummaryData.totalProcessed}
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold border-r border-[#454C54] tabular-nums whitespace-nowrap">
+                        {dailySummaryData.totalSaved}
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold border-r border-[#454C54] tabular-nums whitespace-nowrap">
+                        {formatPctRu(dailySummaryData.totalConversionPct, 1)}
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold border-r border-[#454C54] tabular-nums whitespace-nowrap">
+                        {dailySummaryData.totalRefusedSharePct !== null
+                          ? formatPctRu(dailySummaryData.totalRefusedSharePct, 1)
+                          : ''}
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold tabular-nums whitespace-nowrap">
+                        {formatSecondsToHms(dailySummaryData.totalReadySeconds)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : dataScope === 'department' &&
+              urmConfig.isSupervisorReader &&
+              groupTableMode === 'monthly_plan' ? (
+              /* ТАБЛИЦА 3: ПЛАН МЕСЯЦА (Только для Администратора) */
+              <div className="flex-1 bg-white overflow-y-auto overflow-x-auto overscroll-contain font-mts-compact">
+                {/* Компактная сводка выполнения нормативов по группе (из Скрина 1: Доп / Цель / Агр) */}
+                <div className="px-4 py-2 bg-[#F8F9FB] border-b border-[#DFE2E8] flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold text-[#626C77]">Выполнение по группе</span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-[#FFE699] text-[#664D03] font-semibold tabular-nums">
+                      Доп {formatPctRu(monthlyPlanData.shareTolerancePct, 1)}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-md bg-[#B7E4C7] text-[#0F5132] font-semibold tabular-nums">
+                      Цель {formatPctRu(monthlyPlanData.shareTargetPct, 1)}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-md bg-[#4472C4] text-white font-semibold tabular-nums">
+                      Агр {formatPctRu(monthlyPlanData.shareAggressionPct, 1)}
+                    </span>
+                  </div>
+                </div>
+
+                <table className="w-full min-w-[680px] border-collapse text-left font-mts-compact">
+                  <thead>
+                    <tr className="bg-[#F2F3F7] border-b border-[#D5D8DD]">
+                      {(
+                        [
+                          { key: 'name', label: 'Сотрудник', align: 'left' },
+                          { key: 'saved', label: 'Сохранено', align: 'center' },
+                          { key: 'planPct', label: 'План', align: 'center' },
+                          { key: 'conversion', label: 'Конверсия', align: 'center' },
+                          { key: 'level', label: 'Уровень', align: 'center' },
+                        ] as const
+                      ).map((col) => (
+                        <th
+                          key={col.key}
+                          scope="col"
+                          onClick={() => {
+                            if (monthlySortKey === col.key) {
+                              setMonthlySortAsc((p) => !p);
+                            } else {
+                              setMonthlySortKey(col.key);
+                              setMonthlySortAsc(col.key === 'name');
+                            }
+                          }}
+                          className={`h-8 px-4 text-xs font-semibold text-[#4E5761] border-r border-[#DFE2E8] last:border-r-0 select-none cursor-pointer hover:bg-[#E7E9EF] transition-colors whitespace-nowrap ${
+                            col.align === 'center' ? 'text-center' : 'text-left'
+                          }`}
+                        >
+                          <div
+                            className={`flex items-center gap-1.5 ${
+                              col.align === 'center' ? 'justify-center' : 'justify-between'
+                            }`}
+                          >
+                            <span>{col.label}</span>
+                            <span className="text-[#8C95A0] shrink-0 flex items-center" aria-hidden="true">
+                              <svg
+                                viewBox="0 0 14 14"
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.25"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M4.5 10.5V3.5M4.5 3.5L2.5 5.5M4.5 3.5L6.5 5.5" />
+                                <path d="M9.5 3.5V10.5M9.5 10.5L7.5 8.5M9.5 10.5L11.5 8.5" />
+                              </svg>
+                            </span>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyPlanData.rows.map((row) => {
+                      const levelStyle = KPI_LEVEL_STYLES[row.level];
+                      const planStyle = getPlanCompletionCellClass(row.planPct);
+                      return (
+                        <tr
+                          key={row.key}
+                          className="h-8 border-b border-[#DFE2E8] hover:bg-[#F8F9FB] transition-colors"
+                        >
+                          <td className="px-4 text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] whitespace-nowrap">
+                            <div className="flex items-center justify-between gap-4">
+                              <span>{row.operatorName}</span>
+                              {row.isTrainee && (
+                                <span className="text-[11px] font-normal text-[#8C95A0] shrink-0">
+                                  Стажёр
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 text-center text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                            {row.saved}
+                          </td>
+                          <td
+                            className={`px-4 text-center text-xs border-r border-[#DFE2E8] tabular-nums whitespace-nowrap ${planStyle}`}
+                          >
+                            {row.planPct}%
+                          </td>
+                          <td
+                            className={`px-4 text-center text-xs border-r border-[#DFE2E8] tabular-nums whitespace-nowrap ${levelStyle.cellClass}`}
+                          >
+                            {row.conversionPct}%
+                          </td>
+                          <td
+                            className={`px-4 text-center text-xs tabular-nums whitespace-nowrap ${levelStyle.cellClass}`}
+                          >
+                            {levelStyle.label}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="h-8 bg-[#F2F3F7] border-t-2 border-[#C8CDD5]">
+                      <td className="px-4 text-xs font-bold text-[#1D2023] border-r border-[#DFE2E8] whitespace-nowrap">
+                        Итого
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                        {monthlyPlanData.totalSaved}
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                        {monthlyPlanData.totalPlanPct}%
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                        {monthlyPlanData.totalConversionPct}%
+                      </td>
+                      <td className="px-4 text-center text-xs font-bold text-[#1D2023] whitespace-nowrap">
+                        {KPI_LEVEL_STYLES[monthlyPlanData.totalLevel].label}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : dataScope === 'department' &&
+              (groupTableMode === 'plans_norm' ||
+                (!urmConfig.isSupervisorReader && groupTableMode !== 'log')) ? (
+              /* ТАБЛИЦА 4: НОРМА НА МЕСЯЦ — АНОНС 82% И 100% (Видна всем сотрудникам, редактируется Администратором) */
+              <div className="flex-1 bg-white overflow-y-auto overflow-x-auto overscroll-contain font-mts-compact">
+                {/* Шапка ежемесячных порогов конверсии (Штат / Стажёры): редактируемая у админа, только чтение у сотрудника */}
+                <div className="px-4 py-2.5 bg-[#F8F9FB] border-b border-[#DFE2E8] flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold text-[#1D2023]">Штат, %</span>
+                    <div className="inline-flex items-center gap-1.5">
+                      {(
+                        [
+                          { field: 'tolerance', label: 'Доп', cls: 'bg-[#FFE699] text-[#664D03]' },
+                          { field: 'target', label: 'Цель', cls: 'bg-[#B7E4C7] text-[#0F5132]' },
+                          { field: 'aggression', label: 'Агр', cls: 'bg-[#4472C4] text-white' },
+                        ] as const
+                      ).map((item) =>
+                        urmConfig.isSupervisorReader ? (
+                          <label
+                            key={`reg-bar-${item.field}`}
+                            className="inline-flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-[#D5D8DD] focus-within:border-[#0077FF] focus-within:ring-1 focus-within:ring-[#0077FF]/30 transition-all"
+                          >
+                            <span className="text-[11px] font-medium text-[#656F7D]">{item.label}</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={groupKpiTargets.regular[item.field]}
+                              onChange={(e) => {
+                                const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                updateAndSaveGroupKpiTargets({
+                                  ...groupKpiTargets,
+                                  regular: {
+                                    ...groupKpiTargets.regular,
+                                    [item.field]: val,
+                                  },
+                                });
+                              }}
+                              className="w-9 text-center text-xs font-bold text-[#1D2023] tabular-nums focus:outline-none"
+                            />
+                          </label>
+                        ) : (
+                          <span
+                            key={`reg-bar-${item.field}`}
+                            className={`px-2 py-0.5 rounded-md text-xs font-semibold tabular-nums ${item.cls}`}
+                          >
+                            {item.label} {groupKpiTargets.regular[item.field]}%
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold text-[#1D2023]">Стажёры, %</span>
+                    <div className="inline-flex items-center gap-1.5">
+                      {(
+                        [
+                          { field: 'tolerance', label: 'Доп', cls: 'bg-[#FFE699] text-[#664D03]' },
+                          { field: 'target', label: 'Цель', cls: 'bg-[#B7E4C7] text-[#0F5132]' },
+                          { field: 'aggression', label: 'Агр', cls: 'bg-[#4472C4] text-white' },
+                        ] as const
+                      ).map((item) =>
+                        urmConfig.isSupervisorReader ? (
+                          <label
+                            key={`tr-bar-${item.field}`}
+                            className="inline-flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-[#D5D8DD] focus-within:border-[#0077FF] focus-within:ring-1 focus-within:ring-[#0077FF]/30 transition-all"
+                          >
+                            <span className="text-[11px] font-medium text-[#656F7D]">{item.label}</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={groupKpiTargets.trainee[item.field]}
+                              onChange={(e) => {
+                                const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                updateAndSaveGroupKpiTargets({
+                                  ...groupKpiTargets,
+                                  trainee: {
+                                    ...groupKpiTargets.trainee,
+                                    [item.field]: val,
+                                  },
+                                });
+                              }}
+                              className="w-9 text-center text-xs font-bold text-[#1D2023] tabular-nums focus:outline-none"
+                            />
+                          </label>
+                        ) : (
+                          <span
+                            key={`tr-bar-${item.field}`}
+                            className={`px-2 py-0.5 rounded-md text-xs font-semibold tabular-nums ${item.cls}`}
+                          >
+                            {item.label} {groupKpiTargets.trainee[item.field]}%
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <table className="w-full min-w-[580px] border-collapse text-left font-mts-compact">
+                  <thead>
+                    <tr className="bg-[#F2F3F7] border-b border-[#D5D8DD]">
+                      <th className="h-8 px-4 text-xs font-semibold text-[#4E5761] border-r border-[#DFE2E8] whitespace-nowrap">
+                        Сотрудник
+                      </th>
+                      <th className="h-8 px-5 text-center text-xs font-semibold text-[#4E5761] border-r border-[#DFE2E8] whitespace-nowrap">
+                        82%
+                      </th>
+                      <th
+                        className={`h-8 px-5 text-center text-xs font-semibold text-[#4E5761] whitespace-nowrap ${
+                          urmConfig.isSupervisorReader ? 'border-r border-[#DFE2E8]' : ''
+                        }`}
+                      >
+                        100%
+                      </th>
+                      {urmConfig.isSupervisorReader && (
+                        <th className="h-8 px-4 text-center text-xs font-semibold text-[#4E5761] whitespace-nowrap">
+                          Шкала
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyPlanData.rows.map((row) => {
+                      const currentOverride = groupKpiTargets.employees[row.key] || {
+                        monthlyPlan: row.monthlyPlan,
+                        isTrainee: row.isTrainee,
+                      };
+                      const plan100 = currentOverride.monthlyPlan;
+                      const plan82 = Math.round(plan100 * 0.82);
+                      return (
+                        <tr
+                          key={row.key}
+                          className="h-8 border-b border-[#DFE2E8] hover:bg-[#F8F9FB] transition-colors"
+                        >
+                          <td className="px-4 text-xs font-medium text-[#1D2023] border-r border-[#DFE2E8] whitespace-nowrap">
+                            <div className="flex items-center justify-between gap-4">
+                              <span>{row.operatorName}</span>
+                              {!urmConfig.isSupervisorReader && currentOverride.isTrainee && (
+                                <span className="text-[11px] font-normal text-[#8C95A0] shrink-0">
+                                  Стажёр
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-5 text-center text-xs font-semibold bg-[#FFE699] text-[#664D03] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                            {plan82}
+                          </td>
+                          <td
+                            className={`px-4 text-center text-xs font-semibold bg-[#B7E4C7] text-[#0F5132] tabular-nums whitespace-nowrap ${
+                              urmConfig.isSupervisorReader ? 'border-r border-[#DFE2E8]' : ''
+                            }`}
+                          >
+                            {urmConfig.isSupervisorReader ? (
+                              <input
+                                type="number"
+                                min={1}
+                                value={plan100}
+                                onChange={(e) => {
+                                  const nextPlan = Math.max(1, Number(e.target.value) || 1);
+                                  updateAndSaveGroupKpiTargets({
+                                    ...groupKpiTargets,
+                                    employees: {
+                                      ...groupKpiTargets.employees,
+                                      [row.key]: {
+                                        ...currentOverride,
+                                        monthlyPlan: nextPlan,
+                                      },
+                                    },
+                                  });
+                                }}
+                                className="w-20 h-6 px-2 rounded-md bg-white/95 focus:bg-white border border-[#D5D8DD] focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30 text-center text-xs font-bold text-[#1D2023] tabular-nums focus:outline-none transition-all"
+                              />
+                            ) : (
+                              plan100
+                            )}
+                          </td>
+                          {urmConfig.isSupervisorReader && (
+                            <td className="px-3 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateAndSaveGroupKpiTargets({
+                                    ...groupKpiTargets,
+                                    employees: {
+                                      ...groupKpiTargets.employees,
+                                      [row.key]: {
+                                        ...currentOverride,
+                                        isTrainee: !currentOverride.isTrainee,
+                                      },
+                                    },
+                                  });
+                                }}
+                                className={`h-6 px-2.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  currentOverride.isTrainee
+                                    ? 'bg-[#1D2023] text-white'
+                                    : 'bg-[#F2F3F7] text-[#626C77] hover:text-[#1D2023]'
+                                }`}
+                              >
+                                {currentOverride.isTrainee ? 'Стажёр' : 'Штат'}
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="h-8 bg-[#F2F3F7] border-t-2 border-[#C8CDD5]">
+                      <td className="px-4 text-xs font-bold text-[#1D2023] border-r border-[#DFE2E8] whitespace-nowrap">
+                        Итого
+                      </td>
+                      <td className="px-5 text-center text-xs font-bold text-[#1D2023] border-r border-[#DFE2E8] tabular-nums whitespace-nowrap">
+                        {monthlyPlanData.totalPlan82}
+                      </td>
+                      <td
+                        className={`px-5 text-center text-xs font-bold text-[#1D2023] tabular-nums whitespace-nowrap ${
+                          urmConfig.isSupervisorReader ? 'border-r border-[#DFE2E8]' : ''
+                        }`}
+                      >
+                        {monthlyPlanData.totalPlan}
+                      </td>
+                      {urmConfig.isSupervisorReader && <td className="px-3" />}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+              /* ТАБЛИЦА 1: 100% ПОЛНОЭКРАННЫЙ ЖУРНАЛ ЗАПИСЕЙ */
+            <div className="flex-1 w-full h-full bg-white overflow-y-auto overflow-x-auto overscroll-contain font-mts-compact">
+              <table className="w-full border-collapse table-fixed text-left font-mts-compact">
                 <colgroup>
                   {activeColumnsList.map((col) => (
-                    <col key={`col-${col.id}`} style={{ width: `${colWidths[col.id]}px` }} />
+                    <col
+                      key={`col-${col.id}`}
+                      style={{
+                        width: `${((colWidths[col.id] / totalActiveColsWeight) * 100).toFixed(3)}%`,
+                      }}
+                    />
                   ))}
                 </colgroup>
                 <thead>
@@ -1287,26 +2644,16 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                       <th
                         key={col.id}
                         scope="col"
-                        style={{ width: `${colWidths[col.id]}px` }}
-                        className={`relative group h-10 ${
-                          col.hideSort ? 'px-2 text-center' : 'px-3.5'
-                        } text-[12px] font-medium text-[#656F7D] border-r border-[#EBECEF] last:border-r-0 select-none`}
+                        className={`relative group h-9 ${
+                          col.hideSort ? 'px-1.5 text-center' : 'px-2.5'
+                        } text-xs font-medium text-[#656F7D] border-r border-[#EBECEF] last:border-r-0 select-none`}
                       >
                         <div
                           className={`flex items-center ${
                             col.hideSort ? 'justify-center' : 'justify-between'
-                          } gap-1.5`}
+                          } gap-1`}
                         >
-                          {col.id === 'deleted' ? (
-                            <span
-                              title="Отметка об удалении номера сотрудником"
-                              className="inline-flex items-center justify-center text-[#8C95A0]"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </span>
-                          ) : (
-                            <span className="truncate">{col.label}</span>
-                          )}
+                          <span className="truncate">{col.label}</span>
                           {!col.hideSort && (
                             <span className="text-[#9AA3AF] shrink-0 flex items-center" aria-hidden="true">
                               <svg
@@ -1329,7 +2676,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           onPointerDown={(e) =>
                             handleStartColumnResize(col.id, col.minWidth, col.maxWidth, e)
                           }
-                          title={`Тяните, чтобы изменить ширину «${col.label}» (${colWidths[col.id]}px)`}
+                          title={`Тяните, чтобы изменить ширину «${col.label}»`}
                           className="absolute top-0 -right-1.5 bottom-0 w-3 z-20 cursor-col-resize flex items-center justify-center group/resizer"
                         >
                           <span
@@ -1348,7 +2695,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                   {displayRows.map((row, rowIndex) => (
                     <tr
                       key={row ? row.id : `empty-shift-row-${rowIndex}`}
-                      className="h-12 bg-white hover:bg-[#FAFBFD] border-b border-[#EEF0F4] transition-colors"
+                      className="h-10 bg-white hover:bg-[#FAFBFD] border-b border-[#EEF0F4] transition-colors"
                     >
                       {activeColumnsList.map((col) => {
                         if (col.id === 'date') {
@@ -1373,7 +2720,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
                               rowSpan={groupSpan}
-                              className="px-2 py-4 text-[14px] font-bold text-[#1D2023] bg-white border-r border-[#EEF0F4] align-middle text-center font-mts-compact"
+                              className="px-1.5 py-3 text-xs font-bold text-[#1D2023] bg-white border-r border-[#EEF0F4] align-middle text-center font-mts-compact"
                             >
                               <div className="inline-flex items-center justify-center [writing-mode:vertical-rl] rotate-180 font-bold tracking-wide select-none font-mts-compact">
                                 {rowDateLabel}
@@ -1386,9 +2733,25 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3.5 py-2 text-[12px] font-semibold text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs font-semibold text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
                             >
                               {row ? row.time : ''}
+                            </td>
+                          );
+                        }
+
+                        if (col.id === 'ready') {
+                          const rowReadySec = row
+                            ? row.readyTimeSeconds ?? stats?.readyTimeSeconds ?? 0
+                            : rowIndex === 0 && (stats?.readyTimeSeconds || 0) > 0
+                            ? stats?.readyTimeSeconds || 0
+                            : null;
+                          return (
+                            <td
+                              key={`cell-${rowIndex}-${col.id}`}
+                              className="px-2.5 py-1.5 text-xs font-semibold text-[#1D2023] tabular-nums border-r border-[#EEF0F4] align-middle font-mts-compact"
+                            >
+                              {rowReadySec !== null ? formatSecondsToHms(rowReadySec) : ''}
                             </td>
                           );
                         }
@@ -1397,19 +2760,12 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3.5 py-2 text-[12px] font-semibold text-[#1D2023] border-r border-[#EEF0F4] align-middle truncate font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs font-semibold text-[#1D2023] border-r border-[#EEF0F4] align-middle truncate font-mts-compact"
                             >
                               {row ? (
-                                <div className="flex flex-col min-w-0">
-                                  <span className="truncate font-bold text-[#1D2023]">
-                                    {row.operatorName || urmConfig.operatorName || 'Вы'}
-                                  </span>
-                                  {row.groupLeaderName && (
-                                    <span className="truncate text-[10px] text-[#626C77]">
-                                      РГ: {row.groupLeaderName}
-                                    </span>
-                                  )}
-                                </div>
+                                <span className="truncate font-bold text-[#1D2023] block">
+                                  {row.operatorName || urmConfig.operatorName || 'Вы'}
+                                </span>
                               ) : null}
                             </td>
                           );
@@ -1419,15 +2775,15 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3.5 py-2 text-[12px] font-semibold text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs font-semibold text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
                             >
                               {row ? (
-                                <div className="inline-flex items-center gap-1.5 min-w-0">
+                                <div className="inline-flex items-center gap-1 min-w-0">
                                   <button
                                     type="button"
                                     onClick={() => handleCopyPhone(row)}
                                     title="Нажмите на номер, чтобы скопировать"
-                                    className={`inline-flex items-center gap-1 text-left text-[12px] font-semibold transition-colors cursor-pointer font-mts-compact ${
+                                    className={`inline-flex items-center gap-1 text-left text-xs font-semibold transition-colors cursor-pointer font-mts-compact ${
                                       copiedPhoneId === row.id
                                         ? 'text-[#109E59]'
                                         : 'text-[#1D2023] hover:text-[#0077FF]'
@@ -1471,7 +2827,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-1.5 py-2 text-center border-r border-[#EEF0F4] align-middle font-mts-compact"
+                              className="px-1 py-1.5 text-center border-r border-[#EEF0F4] align-middle font-mts-compact"
                             >
                               {isDeletedRow ? (
                                 <span
@@ -1515,12 +2871,12 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3 py-2 text-[12px] text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
                             >
                               {row ? (
-                                <div className="inline-flex items-center gap-1.5 flex-wrap">
+                                <div className="inline-flex items-center gap-1 flex-wrap">
                                   <span
-                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${pillStyles}`}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${pillStyles}`}
                                   >
                                     {displayTypeLabel}
                                   </span>
@@ -1551,7 +2907,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-2 py-2 text-[12px] font-semibold text-[#1D2023] text-center tabular-nums border-r border-[#EEF0F4] align-middle font-mts-compact"
+                              className="px-2 py-1.5 text-xs font-semibold text-[#1D2023] text-center tabular-nums border-r border-[#EEF0F4] align-middle font-mts-compact"
                             >
                               {attemptsVal !== null ? attemptsVal : ''}
                             </td>
@@ -1562,14 +2918,14 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3.5 py-2 text-[12px] font-normal text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs font-normal text-[#1D2023] border-r border-[#EEF0F4] align-middle font-mts-compact"
                             >
                               {row && row.link ? (
                                 <button
                                   type="button"
                                   onClick={() => handleCopyLink(row)}
                                   title={`Нажмите на ссылку, чтобы скопировать: ${row.link}`}
-                                  className={`w-full text-left truncate text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 min-w-0 font-mts-compact ${
+                                  className={`w-full text-left truncate text-xs transition-colors cursor-pointer flex items-center gap-1 min-w-0 font-mts-compact ${
                                     copiedRowId === row.id
                                       ? 'text-[#109E59] font-semibold'
                                       : 'text-[#656F7D] hover:text-[#0077FF] font-normal'
@@ -1589,7 +2945,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3.5 py-2 text-[12px] font-normal text-[#1D2023] border-r border-[#EEF0F4] align-middle truncate font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs font-normal text-[#1D2023] border-r border-[#EEF0F4] align-middle truncate font-mts-compact"
                             >
                               {row ? row.city : ''}
                             </td>
@@ -1600,11 +2956,11 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           return (
                             <td
                               key={`cell-${rowIndex}-${col.id}`}
-                              className="px-3.5 py-2 text-[12px] font-normal text-[#1D2023] border-r border-[#EEF0F4] last:border-r-0 align-middle font-mts-compact"
+                              className="px-2.5 py-1.5 text-xs font-normal text-[#1D2023] border-r border-[#EEF0F4] last:border-r-0 align-middle font-mts-compact"
                             >
                               {row ? (
                                 <div className="flex items-center justify-between gap-2 min-w-0">
-                                  <span className="truncate text-[12px] font-normal text-[#1D2023]" title={row.notes}>
+                                  <span className="truncate text-xs font-normal text-[#1D2023]" title={row.notes}>
                                     {row.notes}
                                   </span>
                                   <div className="flex items-center gap-1.5 shrink-0">
@@ -1649,6 +3005,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                 </tbody>
               </table>
             </div>
+            )
           ) : (
             /* 100% КАПСУЛЬНАЯ АНАЛИТИКА МТС (ЖЕЛОБА ПО ЧАСАМ + КОЛЬЦО СТРУКТУРЫ СМЕНЫ) */
             <div className="flex-1 w-full h-full overflow-y-auto overscroll-contain bg-[#F4F5F7] p-4 sm:p-5 flex flex-col gap-3.5 font-mts-compact">
@@ -2491,8 +3848,65 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                 </button>
               </div>
 
-              {/* Тело окна «Фильтры»: только полоса переключений и выбор периода с календарем */}
+              {/* Тело окна «Фильтры»: выбор Подгруппы / Сотрудника (в режиме Группа) и выбор периода с календарем */}
               <div className="p-6 space-y-5">
+                {dataScope === 'department' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <span className="block text-xs font-semibold text-[#626C77]">Подгруппа</span>
+                      <MtsDropdownSelect
+                        value={selectedGroupFilter}
+                        ariaLabel="Фильтр по подгруппе"
+                        minWidthClass="w-full"
+                        options={[
+                          { value: 'all', label: 'Все подгруппы' },
+                          ...availableGroups.map((g) => ({ value: g, label: g })),
+                        ]}
+                        onChange={(nextVal) => {
+                          setSelectedGroupFilter(nextVal);
+                          setSelectedOperatorFilter('all');
+                        }}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="block text-xs font-semibold text-[#626C77]">Сотрудник</span>
+                      {(() => {
+                        const employeeOptionsMap = new Map<string, string>();
+                        for (const s of BUILTIN_SAMPLE_EMPLOYEES) {
+                          if (
+                            selectedGroupFilter === 'all' ||
+                            s.groupLeaderName.toLowerCase() === selectedGroupFilter.toLowerCase()
+                          ) {
+                            employeeOptionsMap.set(s.operatorId, s.operatorName);
+                          }
+                        }
+                        for (const pkg of departmentPackages) {
+                          if (
+                            selectedGroupFilter === 'all' ||
+                            (pkg.groupLeaderName || '').toLowerCase() ===
+                              selectedGroupFilter.toLowerCase()
+                          ) {
+                            employeeOptionsMap.set(pkg.operatorId, pkg.operatorName);
+                          }
+                        }
+                        const empOpts = Array.from(employeeOptionsMap.entries()).map(
+                          ([value, label]) => ({ value, label })
+                        );
+                        return (
+                          <MtsDropdownSelect
+                            value={selectedOperatorFilter}
+                            ariaLabel="Фильтр по сотруднику"
+                            minWidthClass="w-full"
+                            options={[{ value: 'all', label: 'Все сотрудники' }, ...empOpts]}
+                            onChange={(nextVal) => setSelectedOperatorFilter(nextVal)}
+                          />
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
                 {/* Полоса переключений: Сегодня / Вчера / Неделя / Месяц */}
                 <div className="bg-[#F2F3F7] p-1.5 rounded-2xl grid grid-cols-4 gap-1">
                   {(
@@ -2669,9 +4083,6 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                     <h2 className="text-xl font-black text-[#1D2023] font-mts-extended">
                       Опции и настройки
                     </h2>
-                    <p className="text-xs text-[#626C77] mt-0.5">
-                      Бесконтактная передача статистики в УРМ и настройка таблицы
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -2683,11 +4094,11 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                   </button>
                 </div>
 
-                {/* Кнопки переключения вверху: Параметры (УРМ) / Колонки */}
+                {/* Кнопки переключения вверху: Параметры / Колонки */}
                 <div className="flex justify-between items-center">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C95A0]">
                     {optionsTab === 'params'
-                      ? 'Синхронизация с папкой УРМ (ВС / РГ)'
+                      ? 'Синхронизация с общей папкой'
                       : 'Отображение столбцов таблицы'}
                   </span>
                   <div className="bg-[#F2F3F7] p-1 rounded-xl inline-flex items-center gap-1">
@@ -2700,7 +4111,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           : 'text-[#626C77] hover:text-[#1D2023]'
                       }`}
                     >
-                      Параметры УРМ
+                      Параметры
                     </button>
                     <button
                       type="button"
@@ -2717,18 +4128,25 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                 </div>
               </div>
 
-              {/* Тело модального окна */}
-              <div className="p-6 overflow-y-auto space-y-4 bg-white">
+              {/* Тело модального окна — строго выровнено по одной линейке, единому шрифту и толщине */}
+              <div className="p-6 overflow-y-auto space-y-3.5 bg-white font-mts-compact">
                 {optionsTab === 'params' ? (
                   <>
                     {/* 1. Включение бесконтактной передачи */}
                     <div className="p-4 rounded-2xl bg-[#F8F9FB] border border-[#EBECEF] flex items-center justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-bold text-[#1D2023]">
+                      <div className="flex items-center gap-1.5 relative group">
+                        <span className="text-[13px] font-bold text-[#1D2023] leading-snug">
                           Бесконтактная передача статистики
-                        </div>
-                        <div className="text-xs text-[#626C77] mt-0.5">
-                          Автоматически обновляет ваш зашифрованный файл в общей папке УРМ при каждом сохранении, отказе или недозвоне
+                        </span>
+                        <span
+                          tabIndex={0}
+                          className="text-[#8C95A0] hover:text-[#1D2023] cursor-help inline-flex items-center focus:outline-none transition-colors"
+                          aria-label="Подсказка"
+                        >
+                          <HelpCircle className="w-4 h-4 stroke-[1.75]" />
+                        </span>
+                        <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-2 z-30 w-72 p-3 rounded-2xl bg-[#1D2023] text-white text-[11px] font-normal leading-relaxed shadow-xl">
+                          Автоматически обновляет ваш зашифрованный файл в общей папке при каждом сохранении, отказе или недозвоне
                         </div>
                       </div>
                       <button
@@ -2738,8 +4156,8 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           setUrmConfig(next);
                           saveUrmSyncConfig(next);
                         }}
-                        className={`w-12 h-7 rounded-full transition-colors p-1 cursor-pointer shrink-0 ${
-                          urmConfig.enabled ? 'bg-[#E30613]' : 'bg-[#D5D8DD]'
+                        className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                          urmConfig.enabled ? 'bg-[#1D2023]' : 'bg-[#D5D8DD]'
                         }`}
                       >
                         <div
@@ -2750,57 +4168,24 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                       </button>
                     </div>
 
-                    {/* 2. Имя/логин сотрудника и имя РГ/ВС */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1D2023] mb-1.5">
-                          Ваше имя или логин УРМ
-                        </label>
-                        <input
-                          type="text"
-                          value={urmConfig.operatorName}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const next: UrmSyncConfig = {
-                              ...urmConfig,
-                              operatorName: val,
-                              operatorId: val.trim() || urmConfig.operatorId,
-                            };
-                            setUrmConfig(next);
-                            saveUrmSyncConfig(next);
-                          }}
-                          placeholder="Например: Иван Иванов"
-                          className="w-full h-10 px-3.5 rounded-xl bg-[#F2F3F7] focus:bg-white border border-transparent focus:border-[#B8C0CC] text-xs font-semibold text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-[#1D2023] mb-1.5">
-                          Ваш ВС / РГ (необязательно)
-                        </label>
-                        <input
-                          type="text"
-                          value={urmConfig.groupLeaderName}
-                          onChange={(e) => {
-                            const next: UrmSyncConfig = {
-                              ...urmConfig,
-                              groupLeaderName: e.target.value,
-                            };
-                            setUrmConfig(next);
-                            saveUrmSyncConfig(next);
-                          }}
-                          placeholder="Например: Андрей Андреевич"
-                          className="w-full h-10 px-3.5 rounded-xl bg-[#F2F3F7] focus:bg-white border border-transparent focus:border-[#B8C0CC] text-xs font-semibold text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 3. Сетевой путь к общей папке в УРМ (вводится вручную пользователем!) */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-bold text-[#1D2023]">
-                          Путь к общей папке статистики в УРМ
-                        </label>
+                    {/* 2. Сетевой путь к общей папке статистики (в такой же карточке по линейке) */}
+                    <div className="p-4 rounded-2xl bg-[#F8F9FB] border border-[#EBECEF] space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5 relative group">
+                          <label className="block text-[13px] font-bold text-[#1D2023] leading-snug">
+                            Путь к общей папке статистики
+                          </label>
+                          <span
+                            tabIndex={0}
+                            className="text-[#8C95A0] hover:text-[#1D2023] cursor-help inline-flex items-center focus:outline-none transition-colors"
+                            aria-label="Подсказка"
+                          >
+                            <HelpCircle className="w-4 h-4 stroke-[1.75]" />
+                          </span>
+                          <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-2 z-30 w-80 p-3 rounded-2xl bg-[#1D2023] text-white text-[11px] font-normal leading-relaxed shadow-xl">
+                            Впишите сюда сетевой путь к общей папке (например, вашей или ВС / РГ). Нажмите «Подключить» ниже — путь автоматически скопируется в буфер обмена, вставьте его (Ctrl+V) в открывшемся окне Windows и выберите папку 1 раз.
+                          </div>
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
@@ -2810,10 +4195,10 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                               setTimeout(() => setCopiedPathToast(false), 1800);
                             }
                           }}
-                          className="text-[11px] font-bold text-[#0077FF] hover:underline flex items-center gap-1 cursor-pointer"
+                          className="h-7 px-2.5 rounded-lg bg-white hover:bg-[#EBECEF] border border-[#E4E7EC] text-[11px] font-semibold text-[#1D2023] flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
                         >
-                          <Copy className="w-3 h-3" />
-                          <span>{copiedPathToast ? 'Скопировано!' : 'Скопировать путь'}</span>
+                          <Copy className="w-3 h-3 text-[#626C77]" />
+                          <span>{copiedPathToast ? 'Скопировано' : 'Скопировать путь'}</span>
                         </button>
                       </div>
 
@@ -2829,20 +4214,11 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                           saveUrmSyncConfig(next);
                         }}
                         placeholder="\\msk.mts.ru\MSK\User\Folders\Homes\...\MSK_Stats"
-                        className="w-full h-10 px-3.5 rounded-xl bg-[#F2F3F7] focus:bg-white border border-transparent focus:border-[#B8C0CC] text-xs font-mono font-semibold text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none"
+                        className="w-full h-10 px-3.5 rounded-xl bg-white border border-[#D5D8DD] focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30 text-xs font-semibold text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none transition-all font-mts-compact"
                       />
 
-                      <div className="text-[11px] text-[#626C77] leading-relaxed">
-                        Впишите сюда сетевой путь к общей папке (например, вашей или ВС / РГ).{' '}
-                        {!hasNativeUrmIpcBridge() && (
-                          <span>
-                            Нажмите <strong>«Подключить папку в Проводнике»</strong> ниже — путь автоматически скопируется в буфер обмена, вставьте его (<strong>Ctrl+V</strong>) в открывшемся окне Windows и выберите папку 1 раз.
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Кнопки подключения папки и тестовой отправки */}
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {/* Кнопки Подключить и Проверить строго одного размера и толщины */}
+                      <div className="flex flex-wrap items-center gap-2.5">
                         <button
                           type="button"
                           onClick={async () => {
@@ -2861,14 +4237,10 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                               setSyncErrorMessage(res.error);
                             }
                           }}
-                          className="h-9 px-3.5 rounded-xl bg-[#1D2023] hover:bg-[#2F343A] text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                          className="h-9 px-4 rounded-xl bg-[#1D2023] hover:bg-[#2F343A] text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                         >
-                          <FolderOpen className="w-3.5 h-3.5" />
-                          <span>
-                            {connectedFolderName
-                              ? `Папка подключена: ${connectedFolderName} (сменить)`
-                              : 'Подключить папку в Проводнике'}
-                          </span>
+                          <FolderOpen className="w-3.5 h-3.5 stroke-[2]" />
+                          <span>Подключить</span>
                         </button>
 
                         <button
@@ -2905,7 +4277,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                             setIsSyncingNow(false);
                             if (res.ok) {
                               setSyncStatusMessage(
-                                `✓ Ваш файл статистики успешно записан в папку (${new Date().toLocaleTimeString('ru-RU')})`
+                                `Файл статистики успешно записан в папку в ${new Date().toLocaleTimeString('ru-RU')}`
                               );
                               if (nextCfg.isSupervisorReader) {
                                 refreshDepartmentFolderStats(nextCfg);
@@ -2914,10 +4286,10 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                               setSyncErrorMessage(res.error || 'Ошибка отправки в папку');
                             }
                           }}
-                          className="h-9 px-3.5 rounded-xl bg-[#F2F3F7] hover:bg-[#E5E7EB] text-[#1D2023] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          className="h-9 px-4 rounded-xl bg-white hover:bg-[#EBECEF] border border-[#E4E7EC] text-[#1D2023] text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                         >
-                          <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin' : ''}`} />
-                          <span>Проверить отправку сейчас</span>
+                          <Wrench className={`w-3.5 h-3.5 stroke-[2] ${isSyncingNow ? 'animate-spin' : ''}`} />
+                          <span>Проверить</span>
                         </button>
                       </div>
 
@@ -2933,48 +4305,52 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                       )}
                     </div>
 
-                    {/* 4. Режим руководителя (ВС / РГ) */}
-                    <div className="p-4 rounded-2xl bg-[#F8F9FB] border border-[#EBECEF] flex items-center justify-between gap-4">
-                      <div className="flex items-start gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-red-50 text-[#E30613] flex items-center justify-center shrink-0 mt-0.5">
-                          <ShieldCheck className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-[#1D2023]">
-                            Режим руководителя (ВС / РГ)
+                    {/* 3. Режим администратора + настройка порогов конверсии (Штат / Стажёры) и месячных планов */}
+                    <div className="p-4 rounded-2xl bg-[#F8F9FB] border border-[#EBECEF] space-y-3.5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-1.5 relative group">
+                          <span className="text-[13px] font-bold text-[#1D2023] leading-snug">
+                            Режим администратора
+                          </span>
+                          <span
+                            tabIndex={0}
+                            className="text-[#8C95A0] hover:text-[#1D2023] cursor-help inline-flex items-center focus:outline-none transition-colors"
+                            aria-label="Подсказка"
+                          >
+                            <HelpCircle className="w-4 h-4 stroke-[1.75]" />
+                          </span>
+                          <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute left-0 bottom-full mb-2 z-30 w-72 p-3 rounded-2xl bg-[#1D2023] text-white text-[11px] font-normal leading-relaxed shadow-xl">
+                            Для ВС и РГ: включает в шапке кнопку «Группа», сводные таблицы День и Месяц и настройку порогов конверсии
                           </div>
-                          <div className="text-xs text-[#626C77] mt-0.5">
-                            Для ВС и РГ: включает в шапке кнопку <strong>«Отдел УРМ»</strong> и собирает статистику всех сотрудников из этой папки в единую таблицу и график
-                          </div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextVal = !urmConfig.isSupervisorReader;
-                          const next: UrmSyncConfig = {
-                            ...urmConfig,
-                            isSupervisorReader: nextVal,
-                          };
-                          setUrmConfig(next);
-                          saveUrmSyncConfig(next);
-                          if (nextVal) {
-                            setDataScope('department');
-                            refreshDepartmentFolderStats(next);
-                          } else {
-                            setDataScope('own');
-                          }
-                        }}
-                        className={`w-12 h-7 rounded-full transition-colors p-1 cursor-pointer shrink-0 ${
-                          urmConfig.isSupervisorReader ? 'bg-[#E30613]' : 'bg-[#D5D8DD]'
-                        }`}
-                      >
-                        <div
-                          className={`w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
-                            urmConfig.isSupervisorReader ? 'translate-x-5' : 'translate-x-0'
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextVal = !urmConfig.isSupervisorReader;
+                            const next: UrmSyncConfig = {
+                              ...urmConfig,
+                              isSupervisorReader: nextVal,
+                            };
+                            setUrmConfig(next);
+                            saveUrmSyncConfig(next);
+                            if (nextVal) {
+                              setDataScope('department');
+                              refreshDepartmentFolderStats(next);
+                            } else {
+                              setDataScope('own');
+                            }
+                          }}
+                          className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                            urmConfig.isSupervisorReader ? 'bg-[#1D2023]' : 'bg-[#D5D8DD]'
                           }`}
-                        />
-                      </button>
+                        >
+                          <div
+                            className={`w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
+                              urmConfig.isSupervisorReader ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
                     </div>
                   </>
                 ) : (
@@ -2997,7 +4373,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                                 [col.id]: !prev[col.id],
                               }))
                             }
-                            className="w-4 h-4 accent-[#E30613] rounded cursor-pointer"
+                            className="w-4 h-4 accent-[#1D2023] rounded cursor-pointer"
                           />
                         </label>
                       );
@@ -3029,6 +4405,7 @@ export const BookWorkspaceModal: React.FC<BookWorkspaceModalProps> = ({
                   onClick={() => {
                     saveUrmSyncConfig(urmConfig);
                     if (urmConfig.isSupervisorReader) {
+                      setDataScope('department');
                       refreshDepartmentFolderStats(urmConfig);
                     }
                     setIsOptionsModalOpen(false);

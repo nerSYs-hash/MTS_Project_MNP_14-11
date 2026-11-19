@@ -23,10 +23,6 @@ import {
   downloadAsarFile,
   getInstalledAppVersion,
 } from '../utils/updateManager';
-import {
-  loadSenderNameFromStorage,
-  saveSenderNameToStorage,
-} from '../utils/cardSharing';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -132,9 +128,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [importText, setImportText] = useState('');
   const [importResultMsg, setImportResultMsg] = useState<string | null>(null);
   const [downloadDone, setDownloadDone] = useState(false);
+  const [downloadAppDone, setDownloadAppDone] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isDownloadingAsar, setIsDownloadingAsar] = useState(false);
   const [isDownloadingAppAsar, setIsDownloadingAppAsar] = useState(false);
-  const [senderName, setSenderName] = useState<string>(() => loadSenderNameFromStorage());
 
   // Синхронизация полей настроек при открытии модального окна
   useEffect(() => {
@@ -153,17 +150,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setPushPosition(settings.pushPosition || 'top-right');
       setAutoClearShiftAtMidnight(settings.autoClearShiftAtMidnight !== false);
       setPearlAnimationMode(settings.pearlAnimationMode || 'auto');
-      setSenderName(loadSenderNameFromStorage());
       if (typeof window !== 'undefined' && 'Notification' in window) {
         setNotificationsGranted(Notification.permission === 'granted');
       }
     }
   }, [isOpen, settings]);
 
+  // Автосохранение всех индивидуальных настроек пользователя по умолчанию при любом изменении
+  useEffect(() => {
+    if (!isOpen) return;
+    onSaveSettings({
+      ...settings,
+      collapseDelayMinutes: collapseDelay,
+      headerCollapseAnimationEnabled,
+      soundEnabled,
+      volume,
+      includeWithoutTpInSaved,
+      includeEiInSaved,
+      enableNumbersAccounting,
+      kpiFontWeight,
+      enablePushNotifications,
+      pushPosition,
+      autoClearShiftAtMidnight,
+      pearlAnimationMode,
+    });
+  }, [
+    isOpen,
+    collapseDelay,
+    headerCollapseAnimationEnabled,
+    soundEnabled,
+    volume,
+    includeWithoutTpInSaved,
+    includeEiInSaved,
+    enableNumbersAccounting,
+    kpiFontWeight,
+    enablePushNotifications,
+    pushPosition,
+    autoClearShiftAtMidnight,
+    pearlAnimationMode,
+  ]);
+
   if (!isOpen) return null;
 
   const handleSave = () => {
-    saveSenderNameToStorage(senderName.trim());
     onSaveSettings({
       ...settings,
       collapseDelayMinutes: collapseDelay,
@@ -271,7 +300,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Основная область настроек */}
         <div className="overflow-y-auto p-5 flex-1 space-y-4">
           {/* КОМПАКТНЫЕ КАРТОЧКИ-ВКЛАДКИ */}
-          <div className={`grid grid-cols-2 ${isDevMode ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-2.5`}>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {/* Карточка темы 1: ИНТЕРФЕЙС */}
             <button
               type="button"
@@ -296,40 +325,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </button>
 
-            {/* Карточка темы 2 (только в Dev-режиме): АНИМАЦИИ ЖЕМЧУЖИНЫ */}
-            {isDevMode && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('animations')}
-                className={`text-left rounded-2xl p-3 bg-white border transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[76px] shadow-mts-card hover:shadow-mts-hover ${
-                  activeTab === 'animations'
-                    ? 'border-[#1D2023] ring-1 ring-[#1D2023]/10'
-                    : 'border-[#F1F3F5]'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full gap-1">
-                  <span className="text-[11px] font-bold text-[#1D2023] uppercase tracking-wider truncate">
-                    Анимации
-                  </span>
-                  <div className="w-6.5 h-6.5 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
+            {/* Карточка темы 2: АНИМАЦИИ ЖЕМЧУЖИНЫ */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('animations')}
+              className={`text-left rounded-2xl p-3 bg-white border transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[76px] shadow-mts-card hover:shadow-mts-hover ${
+                activeTab === 'animations'
+                  ? 'border-[#1D2023] ring-1 ring-[#1D2023]/10'
+                  : 'border-[#F1F3F5]'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full gap-1">
+                <span className="text-[11px] font-bold text-[#1D2023] uppercase tracking-wider truncate">
+                  Анимации
+                </span>
+                <div className="w-6.5 h-6.5 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-3.5 h-3.5" />
                 </div>
+              </div>
 
-                <div className="text-[11px] text-[#626C77] mt-1.5 truncate">
-                  Режим:{' '}
-                  <strong className="text-[#1D2023]">
-                    {pearlAnimationMode === 'loop_horiz_spin'
-                      ? '3D-вращение'
-                      : pearlAnimationMode === 'loop_multi_orbits'
-                      ? 'Орбиты'
-                      : pearlAnimationMode === 'loop_flight'
-                      ? 'Облёт'
-                      : 'Авто'}
-                  </strong>
-                </div>
-              </button>
-            )}
+              <div className="text-[11px] text-[#626C77] mt-1.5 truncate">
+                Жемчужина:{' '}
+                <strong className="text-[#1D2023]">
+                  {pearlAnimationMode === 'off'
+                    ? 'Выкл'
+                    : pearlAnimationMode === 'loop_horiz_spin'
+                    ? '3D-вращение'
+                    : pearlAnimationMode === 'loop_multi_orbits'
+                    ? 'Орбиты'
+                    : pearlAnimationMode === 'loop_flight'
+                    ? 'Облёт'
+                    : 'Авто'}
+                </strong>
+              </div>
+            </button>
 
             {/* Карточка темы 2: ЗВУК И PUSH */}
             <button
@@ -605,17 +634,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={setHeaderCollapseAnimationEnabled}
                     />
                   </div>
-                  <div className="pt-2 border-t border-[#F1F3F5] flex items-center justify-between gap-2">
-                    <span className="text-xs text-[#626C77] font-medium shrink-0">
-                      Имя при передаче:
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-[#626C77] font-medium">
+                      Полная анимация Жемчужины
                     </span>
-                    <input
-                      type="text"
-                      value={senderName}
-                      onChange={(e) => setSenderName(e.target.value)}
-                      placeholder="Имя / смена (необяз.)"
-                      maxLength={32}
-                      className="h-7 w-40 px-2.5 rounded-lg bg-[#F4F5F7] border border-[#EBECEF] text-xs font-medium text-[#1D2023] placeholder:text-[#8C95A0] focus:outline-none focus:bg-white focus:border-[#B8C0CC] transition-colors"
+                    <ToggleSwitch
+                      checked={pearlAnimationMode !== 'off'}
+                      onChange={(enabled) => setPearlAnimationMode(enabled ? 'auto' : 'off')}
                     />
                   </div>
                 </div>
@@ -623,47 +648,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-
-
-          {/* РАЗДЕЛ (только в Dev-режиме): АНИМАЦИИ ЖЕМЧУЖИНЫ */}
-          {isDevMode && activeTab === 'animations' && (
+          {/* РАЗДЕЛ: АНИМАЦИИ ЖЕМЧУЖИНЫ */}
+          {activeTab === 'animations' && (
             <div className="space-y-3.5">
               <div className="bg-white rounded-3xl p-4 sm:p-5 border border-[#F1F3F5] shadow-mts-card space-y-3.5">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <div>
                     <span className="text-xs font-bold text-[#1D2023] uppercase tracking-wider block">
-                      Анимации свободной Жемчужины (Зацикливание)
+                      Анимация Жемчужины и капель
                     </span>
                     <p className="text-xs text-[#626C77] mt-1 leading-relaxed">
-                      Выберите режим вращения капель, когда Жемчужина откреплена от края рабочей области. Капли двигаются асинхронно и непрерывно меняют траекторию в реальном времени. Анимации у края рабочей области работают по своим правилам и здесь не затрагиваются.
+                      Управление автономными анимациями Жемчужины у края экрана и в свободном режиме.
                     </p>
                   </div>
+                  <ToggleSwitch
+                    checked={pearlAnimationMode !== 'off'}
+                    onChange={(enabled) => setPearlAnimationMode(enabled ? 'auto' : 'off')}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   {[
                     {
                       key: 'auto' as PearlAnimationMode,
-                      title: 'Автоматический цикл (По очереди)',
-                      subtitle: 'Плавная смена всех трёх свободных анимаций по расписанию или по клику на Жемчужину',
+                      title: 'Полная анимация (Автоматический цикл)',
+                      subtitle: 'Плавная смена всех анимаций Жемчужины и капель у края экрана и в свободном режиме',
                       badge: 'По умолчанию',
+                    },
+                    {
+                      key: 'off' as PearlAnimationMode,
+                      title: 'Отключить анимацию Жемчужины',
+                      subtitle: 'Полное отключение автономных анимаций, волн, хлыста и вращения капель',
+                      badge: 'Выкл',
                     },
                     {
                       key: 'loop_horiz_spin' as PearlAnimationMode,
                       title: 'Зациклить: 3D-вращение капель',
-                      subtitle: 'Непрерывное объёмное вращение вокруг Жемчужины с асинхронной случайной сменой орбит и наклона',
+                      subtitle: 'Непрерывное объёмное вращение вокруг Жемчужины с асинхронной сменой орбит и наклона',
                       badge: 'Цикл 3D',
                     },
                     {
                       key: 'loop_multi_orbits' as PearlAnimationMode,
                       title: 'Зациклить: Орбитальные кольца',
-                      subtitle: 'Капли скользят строго по прорисованным кольцам-орбитам (пропуская линии сквозь себя) с живой сменой скорости',
+                      subtitle: 'Капли скользят по прорисованным кольцам-орбитам с живой сменой скорости',
                       badge: 'Цикл орбит',
                     },
                     {
                       key: 'loop_flight' as PearlAnimationMode,
                       title: 'Зациклить: Поглощение и облёт',
-                      subtitle: 'Жемчужина по очереди втягивает капли внутрь себя, совершает плавный вираж со случайной траекторией и выпускает их',
+                      subtitle: 'Жемчужина по очереди втягивает капли внутрь себя, совершает вираж и выпускает их',
                       badge: 'Цикл полёта',
                     },
                   ].map((option) => {
@@ -973,7 +1006,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => setImportText(e.target.value)}
                       placeholder="+7 (912) 000-00-00&#10;+79270000000&#10;89991234567..."
                       rows={3}
-                      className="w-full p-2 rounded-xl bg-white border border-[#D5D8DD] text-xs font-mono text-[#1D2023] focus:border-[#1D2023] focus:outline-none"
+                      className="w-full p-2 rounded-xl bg-white border border-[#D5D8DD] text-xs font-mono text-[#1D2023] focus:border-[#0077FF] focus:ring-1 focus:ring-[#0077FF]/30 focus:outline-none transition-all"
                     />
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] text-[#626C77]">
@@ -1043,7 +1076,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* РАЗДЕЛ 4: ОБНОВЛЕНИЯ УРМ (ТОЛЬКО ЧЕРЕЗ UPDATE.ASAR / APP.ASAR) */}
+          {/* РАЗДЕЛ 4: ОБНОВЛЕНИЯ (ТОЛЬКО ЧЕРЕЗ UPDATE.ASAR / APP.ASAR) */}
           {activeTab === 'updates' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* Карточка 1: Скачивание архива обновления update.asar */}
@@ -1051,7 +1084,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-[#1D2023] uppercase tracking-wider">
-                      Пакеты УРМ (ASAR)
+                      Пакеты обновления (ASAR)
                     </span>
                     <span className="text-[11px] font-semibold text-[#626C77]">
                       v{installedVersion}
@@ -1063,16 +1096,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 <div className="my-3 space-y-2">
+                  {typeof window !== 'undefined' &&
+                    Boolean((window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron) &&
+                    !Boolean((window as unknown as { electronAPI?: { hasExternalOverlays?: boolean } }).electronAPI?.hasExternalOverlays) && (
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-snug">
+                        <strong className="font-bold">Требуется разовая замена app.asar:</strong> ваша текущая оболочка <code>.exe</code> (старая сборка) ещё не читает <code>update.asar</code> и не выносит окна наружу. Скачайте <strong>app.asar</strong> ниже и замените файл <code>resources\app.asar</code>.
+                      </div>
+                    )}
+
                   <button
                     type="button"
                     disabled={isDownloadingAsar}
                     onClick={async () => {
                       setIsDownloadingAsar(true);
+                      setDownloadError(null);
                       try {
                         await downloadAsarFile('update.asar');
                         setDownloadDone(true);
-                        setTimeout(() => setDownloadDone(false), 3000);
+                        setTimeout(() => setDownloadDone(false), 3500);
                       } catch (e) {
+                        const msg = e instanceof Error ? e.message : 'Не удалось скачать update.asar';
+                        setDownloadError(msg);
                         console.error('Ошибка скачивания update.asar:', e);
                       } finally {
                         setIsDownloadingAsar(false);
@@ -1093,7 +1137,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <>
                         <Download className="w-4 h-4 text-white" />
                         <span>
-                          {isDownloadingAsar ? 'Скачивание...' : 'Скачать update.asar (рядом с .exe)'}
+                          {isDownloadingAsar
+                            ? 'Загрузка update.asar...'
+                            : 'Скачать update.asar (рядом с .exe)'}
                         </span>
                       </>
                     )}
@@ -1104,23 +1150,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     disabled={isDownloadingAppAsar}
                     onClick={async () => {
                       setIsDownloadingAppAsar(true);
+                      setDownloadError(null);
                       try {
                         await downloadAsarFile('app.asar');
+                        setDownloadAppDone(true);
+                        setTimeout(() => setDownloadAppDone(false), 3500);
                       } catch (e) {
+                        const msg = e instanceof Error ? e.message : 'Не удалось скачать app.asar';
+                        setDownloadError(msg);
                         console.error('Ошибка скачивания app.asar:', e);
                       } finally {
                         setIsDownloadingAppAsar(false);
                       }
                     }}
-                    className={`w-full h-9 px-4 rounded-full bg-[#F5F6F8] hover:bg-[#EAECEF] text-[#1D2023] text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                      isDownloadingAppAsar ? 'opacity-70 cursor-wait' : ''
-                    }`}
+                    className={`w-full h-9 px-4 rounded-full text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                      downloadAppDone
+                        ? 'bg-[#00B956] text-white'
+                        : 'bg-[#F5F6F8] hover:bg-[#EAECEF] text-[#1D2023]'
+                    } ${isDownloadingAppAsar ? 'opacity-70 cursor-wait' : ''}`}
                   >
-                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                    <FileCheck className={`w-4 h-4 ${downloadAppDone ? 'text-white' : 'text-emerald-600'}`} />
                     <span>
-                      {isDownloadingAppAsar ? 'Скачивание...' : 'Скачать app.asar (в папку resources)'}
+                      {downloadAppDone
+                        ? 'Скачано! (app.asar)'
+                        : isDownloadingAppAsar
+                        ? 'Загрузка app.asar...'
+                        : 'Скачать app.asar (в папку resources)'}
                     </span>
                   </button>
+
+                  {downloadError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] font-medium text-[#E30613] leading-snug">
+                      {downloadError}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-[#F1F3F5] flex items-center justify-between text-[11px] text-[#8C95A0]">
@@ -1142,18 +1205,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="my-3 p-3 rounded-2xl bg-[#F8F9FA] border border-[#EBECEF] text-[11px] text-[#626C77] leading-relaxed space-y-1.5">
                   <p>
-                    <strong className="text-[#1D2023]">1.</strong> Скачайте файл{' '}
-                    <strong className="text-[#1D2023]">update.asar</strong> кнопкой слева.
+                    <strong className="text-[#1D2023]">1.</strong> Для полного обновления (включая выносные окна «Кальки» и «Таймера Ready» поверх программ) скачайте{' '}
+                    <strong className="text-[#1D2023]">app.asar</strong> и замените им файл в папке{' '}
+                    <strong className="text-[#1D2023]">resources</strong> рядом с{' '}
+                    <strong className="text-[#1D2023]">.exe</strong>.
                   </p>
                   <p>
-                    <strong className="text-[#1D2023]">2.</strong> Положите{' '}
-                    <strong className="text-[#1D2023]">update.asar</strong> в одну папку рядом с файлом программы{' '}
-                    <strong className="text-[#1D2023]">.exe</strong> (либо замените{' '}
-                    <strong className="text-[#1D2023]">app.asar</strong> в папке{' '}
-                    <strong className="text-[#1D2023]">resources</strong>).
+                    <strong className="text-[#1D2023]">2.</strong> Для быстрого обновления интерфейса положите{' '}
+                    <strong className="text-[#1D2023]">update.asar</strong> рядом с файлом программы{' '}
+                    <strong className="text-[#1D2023]">.exe</strong>.
                   </p>
                   <p>
-                    <strong className="text-[#1D2023]">3.</strong> Перезапустите программу — новая версия применится автоматически с сохранением всех ваших карточек и настроек.
+                    <strong className="text-[#1D2023]">3.</strong> Перезапустите программу — новая версия применится с сохранением всех ваших карточек и настроек.
                   </p>
                 </div>
 
